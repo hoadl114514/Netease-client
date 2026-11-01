@@ -9,12 +9,14 @@ import '../shell/player_bar.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cover_art.dart';
+import '../widgets/playlist_card.dart';
 import '../widgets/song_tile.dart';
 import 'library/playlist_page.dart';
 import 'music/artist_page.dart';
 import 'music/nav.dart';
 
-/// 搜索。输入时显示联想（补全词 + 几条快速结果，像搜索引擎的下拉框），输入框为空时显示热搜；
+/// 搜索。输入时显示联想（匹配的搜索历史 + 补全词 + 几条快速结果，像搜索引擎的下拉框），
+/// 输入框为空时显示搜索历史和热搜；
 /// 提交后显示单曲 / 歌单 / 歌手 / 专辑四个标签，各自滚到底自动加载下一页。
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key, this.keyword = ''});
@@ -47,6 +49,12 @@ class _SearchPageState extends State<SearchPage> {
   late bool _showResults = _keyword.isNotEmpty;
 
   @override
+  void initState() {
+    super.initState();
+    if (_keyword.isNotEmpty) AppScope.of(context).settings.addSearchHistory(_keyword);
+  }
+
+  @override
   void dispose() {
     _input.dispose();
     _focus.dispose();
@@ -61,6 +69,7 @@ class _SearchPageState extends State<SearchPage> {
       selection: TextSelection.collapsed(offset: k.length),
     );
     _focus.unfocus();
+    AppScope.of(context).settings.addSearchHistory(k);
     setState(() {
       _keyword = k;
       _showResults = true;
@@ -269,9 +278,20 @@ class _SuggestionsState extends State<_Suggestions> {
     final q = _quick;
     // 输入本身也作为第一条，方便直接搜。
     final words = [_text, ..._keywords.where((k) => k != _text)];
+    final lower = _text.toLowerCase();
+    final history = AppScope.of(context).settings.searchHistory
+        .where((h) => h != _text && h.toLowerCase().contains(lower))
+        .take(3);
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
+        for (final h in history)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.history_rounded, size: 20, color: AppColors.textMuted),
+            title: Text(h, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => widget.onSearch(h),
+          ),
         for (final w in words.take(8))
           ListTile(
             dense: true,
@@ -327,33 +347,85 @@ class _SuggestionsState extends State<_Suggestions> {
   }
 
   Widget _hotList(BuildContext context) {
-    if (_hot.isEmpty) return const SizedBox.shrink();
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text('热搜', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+    final settings = AppScope.of(context).settings;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final history = settings.searchHistory;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
-            for (final (i, w) in _hot.indexed)
-              ActionChip(
-                avatar: Text(
-                  '${i + 1}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: i < 3 ? AppColors.accent : AppColors.textMuted,
+            if (history.isNotEmpty) ...[
+              Row(
+                children: [
+                  Text('搜索历史', style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: '清空搜索历史',
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.textMuted),
+                    onPressed: () => _confirmClear(context),
                   ),
-                ),
-                label: Text(w),
-                onPressed: () => widget.onSearch(w),
+                ],
               ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final w in history)
+                    InputChip(
+                      label: Text(w),
+                      onPressed: () => widget.onSearch(w),
+                      onDeleted: () => settings.removeSearchHistory(w),
+                      deleteButtonTooltipMessage: '删除',
+                      deleteIcon: const Icon(Icons.close_rounded, size: 16),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+            if (_hot.isNotEmpty) ...[
+              Text('热搜', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (i, w) in _hot.indexed)
+                    ActionChip(
+                      avatar: Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: i < 3 ? AppColors.accent : AppColors.textMuted,
+                        ),
+                      ),
+                      label: Text(w),
+                      onPressed: () => widget.onSearch(w),
+                    ),
+                ],
+              ),
+            ],
           ],
-        ),
-      ],
+        );
+      },
     );
+  }
+
+  Future<void> _confirmClear(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: const Text('清空全部搜索历史？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('清空')),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) AppScope.of(context).settings.clearSearchHistory();
   }
 }
 
@@ -451,7 +523,13 @@ class _PlaylistTile extends StatelessWidget {
     return ListTile(
       leading: SizedBox(
         width: 52,
-        child: CoverArt(palette: p.palette, seed: p.id, imageUrl: p.coverUrl, radius: 6),
+        child: CoverArt(
+          palette: p.palette,
+          seed: p.id,
+          imageUrl: p.coverUrl,
+          fallbackImage: playlistCoverFallback(context, p),
+          radius: 6,
+        ),
       ),
       title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(

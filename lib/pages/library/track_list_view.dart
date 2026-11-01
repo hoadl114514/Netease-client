@@ -16,6 +16,7 @@ class TrackListView extends StatefulWidget {
     required this.queueTitle,
     required this.header,
     this.reloadKey,
+    this.sourceId,
     this.emptyText = '这里还没有歌曲',
     this.trailingFor,
   });
@@ -24,6 +25,9 @@ class TrackListView extends StatefulWidget {
 
   /// 播放时的队列标题。
   final String queueTitle;
+
+  /// 来源歌单 / 专辑 id，上报最近播放时带上。
+  final String? sourceId;
 
   /// [playAll] 在歌曲加载完之前为 null。
   final Widget Function(BuildContext context, List<Song> tracks, VoidCallback? playAll) header;
@@ -54,7 +58,8 @@ class _TrackListViewState extends State<TrackListView> {
   }
 
   void _play(List<Song> tracks, int i) =>
-      PlayerScope.read(context).playQueue(tracks, start: i, title: widget.queueTitle);
+      PlayerScope.read(context)
+          .playQueue(tracks, start: i, title: widget.queueTitle, sourceId: widget.sourceId);
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +125,7 @@ class CollectionHeader extends StatelessWidget {
     required this.title,
     required this.seed,
     this.coverUrl,
+    this.fallbackCover,
     this.palette,
     this.icon,
     this.lines = const [],
@@ -131,6 +137,9 @@ class CollectionHeader extends StatelessWidget {
   final String title;
   final String seed;
   final String? coverUrl;
+
+  /// 封面没有或加载失败时的备用图。
+  final Future<String?> Function()? fallbackCover;
   final List<Color>? palette;
 
   /// 没有封面图时的占位图标。
@@ -150,6 +159,7 @@ class CollectionHeader extends StatelessWidget {
         palette: palette ?? fallbackPalette(seed),
         seed: seed,
         imageUrl: coverUrl,
+        fallbackImage: fallbackCover,
         icon: icon,
         radius: circular ? 56 : AppRadius.panel,
         shadow: AppShadows.medium,

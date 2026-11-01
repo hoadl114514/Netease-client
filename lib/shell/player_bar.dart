@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../pages/now_playing/now_playing_page.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/copy_sheet.dart';
 import '../widgets/cover_art.dart';
 import '../widgets/like_button.dart';
 import '../widgets/round_icon_button.dart';
@@ -33,6 +34,7 @@ class PlayerBar extends StatelessWidget {
                   Expanded(
                     child: InkWell(
                       onTap: () => openNowPlaying(context),
+                      onLongPress: () => showCopySongSheet(context, song),
                       borderRadius: BorderRadius.circular(AppRadius.card),
                       child: Row(
                         children: [

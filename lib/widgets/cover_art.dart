@@ -6,12 +6,16 @@ import '../api/netease_api.dart';
 
 /// 封面。有 [imageUrl] 时加载网络图片，加载中或失败时显示用 [palette] 画的占位图；
 /// 同一个 [seed] 总是画出同一张占位图。
-class CoverArt extends StatelessWidget {
+///
+/// 加载失败时依次重试：原图地址（不带裁剪参数）→ [fallbackImage] 给的备用图（例如歌单第一首歌的封面）。
+/// [imageUrl] 为 null 时直接用备用图。
+class CoverArt extends StatefulWidget {
   const CoverArt({
     super.key,
     required this.palette,
     required this.seed,
     this.imageUrl,
+    this.fallbackImage,
     this.radius = 8,
     this.icon,
     this.shadow,
@@ -20,38 +24,112 @@ class CoverArt extends StatelessWidget {
   final List<Color> palette;
   final String seed;
   final String? imageUrl;
+
+  /// 主图没有或加载失败时取备用图地址；同一个 [imageUrl] 只调用一次。
+  final Future<String?> Function()? fallbackImage;
   final double radius;
   final IconData? icon;
   final List<BoxShadow>? shadow;
 
   @override
+  State<CoverArt> createState() => _CoverArtState();
+}
+
+class _CoverArtState extends State<CoverArt> {
+  /// 当前在试的图片地址和是否带裁剪参数。
+  String? _url;
+  bool _sized = true;
+  bool _usingFallback = false;
+  bool _fallbackRequested = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reset();
+  }
+
+  @override
+  void didUpdateWidget(CoverArt old) {
+    super.didUpdateWidget(old);
+    if (old.imageUrl != widget.imageUrl) _reset();
+  }
+
+  void _reset() {
+    _url = widget.imageUrl;
+    _sized = true;
+    _usingFallback = false;
+    _fallbackRequested = false;
+    if (_url == null) _requestFallback();
+  }
+
+  Future<void> _requestFallback() async {
+    final fetch = widget.fallbackImage;
+    if (fetch == null || _fallbackRequested) return;
+    _fallbackRequested = true;
+    final forUrl = widget.imageUrl;
+    String? url;
+    try {
+      url = await fetch();
+    } catch (_) {
+      url = null;
+    }
+    if (!mounted || forUrl != widget.imageUrl || url == null || url == widget.imageUrl) return;
+    setState(() {
+      _url = url;
+      _sized = true;
+      _usingFallback = true;
+    });
+  }
+
+  /// 当前地址加载失败：先去掉裁剪参数再试一次，还不行就换备用图。
+  void _onError(String failed, bool sized) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || failed != _url || sized != _sized) return;
+      if (_sized) {
+        setState(() => _sized = false);
+      } else if (!_usingFallback) {
+        setState(() => _url = null);
+        _requestFallback();
+      } else {
+        setState(() => _url = null);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final placeholder = CustomPaint(
-      painter: _CoverPainter(palette, _stableHash(seed)),
-      child: icon == null
+      painter: _CoverPainter(widget.palette, _stableHash(widget.seed)),
+      child: widget.icon == null
           ? null
           : LayoutBuilder(
               builder: (context, c) => Center(
                 child: Icon(
-                  icon,
+                  widget.icon,
                   size: c.maxWidth * 0.36,
                   color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
             ),
     );
+    final url = _url;
+    final sized = _sized;
     return AspectRatio(
       aspectRatio: 1,
       child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(radius), boxShadow: shadow),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(widget.radius),
+          boxShadow: widget.shadow,
+        ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: imageUrl == null
+          borderRadius: BorderRadius.circular(widget.radius),
+          child: url == null
               ? placeholder
               : LayoutBuilder(
                   builder: (context, c) {
                     // 按实际显示尺寸向服务端要图，省流量也省解码内存。
-                    final px = (c.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(
+                    final width = c.maxWidth.isFinite ? c.maxWidth : 300.0;
+                    final px = (width * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(
                       64,
                       1024,
                     );
@@ -66,10 +144,16 @@ class CoverArt extends StatelessWidget {
                       children: [
                         placeholder,
                         Image.network(
-                          sizedImage(imageUrl!, bucket),
+                          sized ? sizedImage(url, bucket) : url,
+                          key: ValueKey('$url|$sized'),
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
-                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                          // 原图可能很大，解码时按显示尺寸缩小。
+                          cacheWidth: sized ? null : px,
+                          errorBuilder: (_, _, _) {
+                            _onError(url, sized);
+                            return const SizedBox.shrink();
+                          },
                           frameBuilder: (_, child, frame, sync) => sync
                               ? child
                               : AnimatedOpacity(

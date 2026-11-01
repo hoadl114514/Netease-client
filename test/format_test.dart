@@ -19,4 +19,14 @@ void main() {
     expect(greetingFor(DateTime(2026, 1, 1, 9)), '上午好');
     expect(greetingFor(DateTime(2026, 1, 1, 21)), '晚上好');
   });
+
+  test('formatCommentTime', () {
+    final now = DateTime(2026, 11, 1, 20, 30);
+    expect(formatCommentTime(now.subtract(const Duration(seconds: 20)), now: now), '刚刚');
+    expect(formatCommentTime(now.subtract(const Duration(minutes: 5)), now: now), '5分钟前');
+    expect(formatCommentTime(DateTime(2026, 11, 1, 8, 0), now: now), '12小时前');
+    expect(formatCommentTime(DateTime(2026, 10, 31, 23, 5), now: now), '昨天 23:05');
+    expect(formatCommentTime(DateTime(2026, 3, 8, 12), now: now), '3月8日');
+    expect(formatCommentTime(DateTime(2021, 12, 8, 1), now: now), '2021年12月8日');
+  });
 }

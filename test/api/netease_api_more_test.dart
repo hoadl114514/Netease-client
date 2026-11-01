@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:netease_client/api/cookies.dart';
 import 'package:netease_client/api/netease_api.dart';
+import 'package:netease_client/data/models.dart';
 
 /// 返回 [routes] 里路径匹配的响应，并记录请求。
 NeteaseApi apiWith(
@@ -279,25 +280,6 @@ void main() {
     await expectLater(api.qrCheck('k'), throwsA(isA<ApiException>()));
   });
 
-  test('loginWithCaptcha returns cookies and surfaces wrong captcha', () async {
-    var body = <String, Object>{'code': 200};
-    final api = NeteaseApi(
-      client: MockClient(
-        (r) async => http.Response(
-          jsonEncode(body),
-          200,
-          headers: {'content-type': 'application/json', 'set-cookie': 'MUSIC_U=u; Path=/'},
-        ),
-      ),
-    );
-    expect(await api.loginWithCaptcha('13800000000', '1234'), {'MUSIC_U': 'u'});
-    body = {'code': 503, 'message': '验证码错误'};
-    await expectLater(
-      api.loginWithCaptcha('13800000000', '0000'),
-      throwsA(isA<ApiException>().having((e) => e.message, 'message', '验证码错误')),
-    );
-  });
-
   test('search suggestions read keywords and quick results', () async {
     final api = apiWith({
       '/suggest/keyword': {
@@ -334,5 +316,155 @@ void main() {
     expect(q.songs.single.title, '晴天');
     expect(q.artists.single.name, '周杰伦');
     expect(q.isEmpty, isFalse);
+  });
+
+  test('playlistDetail falls back to the first song cover when the playlist has none', () async {
+    final api = apiWith({
+      '/playlist/detail': {
+        'code': 200,
+        'playlist': {
+          'id': 5,
+          'name': '空封面',
+          'trackIds': [
+            {'id': 1},
+          ],
+        },
+      },
+      '/song/detail': {
+        'code': 200,
+        'songs': [rawSong(1)],
+      },
+    });
+    final r = await api.playlistDetail('5');
+    expect(r.playlist.coverUrl, 'https://p1.music.126.net/a.jpg');
+  });
+
+  test('playlistFirstCover reads only the first track', () async {
+    final seen = <http.Request>[];
+    final api = apiWith({
+      '/playlist/detail': {
+        'code': 200,
+        'playlist': {
+          'id': 5,
+          'tracks': [rawSong(1)],
+        },
+      },
+    }, seen: seen);
+    expect(await api.playlistFirstCover('5'), 'https://p1.music.126.net/a.jpg');
+    expect(seen.single.bodyFields['n'], '1');
+  });
+
+  test('comments parse users, replies, location and paging cursor', () async {
+    final seen = <http.Request>[];
+    final api = apiWith({
+      '/v2/resource/comments': {
+        'code': 200,
+        'data': {
+          'totalCount': 312072,
+          'hasMore': true,
+          'cursor': 'normalHot#20',
+          'comments': [
+            {
+              'commentId': 11,
+              'content': '好听',
+              'time': 1638897393811,
+              'likedCount': 444020,
+              'liked': true,
+              'replyCount': 3,
+              'user': {'userId': 7, 'nickname': '某人', 'avatarUrl': 'http://p3.music.126.net/u.jpg'},
+              'beReplied': [
+                {
+                  'beRepliedCommentId': 9,
+                  'content': null,
+                  'user': {'nickname': '楼主'},
+                },
+              ],
+              'ipLocation': {'location': '广东'},
+            },
+          ],
+        },
+      },
+    }, seen: seen);
+    final page = await api.comments(
+      'R_SO_4_1',
+      sort: CommentSort.hot,
+      pageNo: 2,
+      cursor: 'normalHot#20',
+    );
+    expect(seen.single.bodyFields, containsPair('sortType', '2'));
+    expect(seen.single.bodyFields, containsPair('cursor', 'normalHot#20'));
+    expect(seen.single.bodyFields, containsPair('pageNo', '2'));
+    expect(page.total, 312072);
+    expect(page.hasMore, isTrue);
+    expect(page.cursor, 'normalHot#20');
+    final c = page.comments.single;
+    expect(c.id, 11);
+    expect(c.user.nickname, '某人');
+    expect(c.user.avatarUrl, 'https://p3.music.126.net/u.jpg');
+    expect(c.liked, isTrue);
+    expect(c.replyCount, 3);
+    expect(c.location, '广东');
+    expect(c.replyTo?.id, 9);
+    expect(c.replyTo?.content, '该评论已删除');
+  });
+
+  test('floor comments use the returned time as cursor', () async {
+    final seen = <http.Request>[];
+    final api = apiWith({
+      '/comment/floor/get': {
+        'code': 200,
+        'data': {
+          'totalCount': 2,
+          'hasMore': false,
+          'time': 1638964850039,
+          'comments': [
+            {
+              'commentId': 12,
+              'content': '回复',
+              'time': 1,
+              'user': {'userId': 8, 'nickname': 'B'},
+            },
+          ],
+        },
+      },
+    }, seen: seen);
+    final page = await api.floorComments('R_SO_4_1', 11);
+    expect(seen.single.bodyFields['time'], '-1');
+    expect(seen.single.bodyFields['parentCommentId'], '11');
+    expect(page.cursor, '1638964850039');
+    expect(page.comments.single.content, '回复');
+  });
+
+  test('posting a reply hits the reply endpoint with the comment id', () async {
+    final seen = <http.Request>[];
+    final api = apiWith({
+      '/comments/reply': {
+        'code': 200,
+        'comment': {
+          'commentId': 99,
+          'content': '你好',
+          'time': 1,
+          'user': {'userId': 1, 'nickname': '我'},
+        },
+      },
+    }, seen: seen);
+    final c = await api.postComment('R_SO_4_1', '你好', replyTo: 11);
+    expect(seen.single.url.path, endsWith('/comments/reply'));
+    expect(seen.single.bodyFields, {'threadId': 'R_SO_4_1', 'content': '你好', 'commentId': '11'});
+    expect(c?.id, 99);
+  });
+
+  test('scrobble sends a play log with listened seconds and source', () async {
+    final seen = <http.Request>[];
+    final api = apiWith({
+      '/feedback/weblog': {'code': 200, 'data': 'success'},
+    }, seen: seen);
+    await api.scrobble('42', seconds: 95, sourceId: 'pl1');
+    final logs = jsonDecode(seen.single.bodyFields['logs']!) as List;
+    final json = (logs.single as Map)['json'] as Map;
+    expect((logs.single as Map)['action'], 'play');
+    expect(json['id'], 42);
+    expect(json['time'], 95);
+    expect(json['sourceId'], 'pl1');
   });
 }

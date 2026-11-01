@@ -7,8 +7,12 @@ import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../state/account_controller.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/playlist_card.dart';
+import '../comments/comments_page.dart';
 import '../login_page.dart';
 import '../music/nav.dart';
+import '../../widgets/copy_sheet.dart';
+import 'lyrics_copy.dart';
 
 Future<void> _sheet(BuildContext context, Widget child) => showModalBottomSheet<void>(
   context: context,
@@ -69,6 +73,7 @@ class _AddToPlaylistSheet extends StatelessWidget {
                                 palette: p.palette,
                                 seed: p.id,
                                 imageUrl: p.coverUrl,
+                                fallbackImage: playlistCoverFallback(context, p),
                                 radius: 4,
                               ),
                             ),
@@ -172,6 +177,16 @@ class _SongMenu extends StatelessWidget {
                 ),
                 title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(song.artist),
+                trailing: IconButton(
+                  tooltip: '复制歌名 / 歌手',
+                  icon: const Icon(Icons.copy_rounded, color: AppColors.textSecondary),
+                  onPressed: () {
+                    final nav = Navigator.of(context);
+                    nav.pop();
+                    showCopySongSheet(nav.context, song);
+                  },
+                ),
+                onLongPress: () => showCopySongSheet(context, song),
               ),
               const Divider(),
               ListTile(
@@ -274,6 +289,25 @@ class _SongMenu extends StatelessWidget {
                           ),
                         );
                         Navigator.of(context).pop();
+                        AppScope.toast('已复制歌词');
+                      },
+              ),
+              ListTile(
+                leading: const Icon(Icons.checklist_rounded, color: AppColors.textPrimary),
+                title: const Text('批量复制歌词'),
+                subtitle: const Text('也可以在歌词上长按'),
+                enabled: !lyrics.isEmpty,
+                onTap: lyrics.isEmpty
+                    ? null
+                    : () {
+                        final nav = Navigator.of(context);
+                        nav.pop();
+                        LyricsCopyPage.open(
+                          nav.context,
+                          song: song,
+                          lyrics: lyrics,
+                          initial: active >= 0 ? active : null,
+                        );
                       },
               ),
               const Divider(),
@@ -292,6 +326,15 @@ class _SongMenu extends StatelessWidget {
                     await player.skipAndRemoveCurrent();
                   }),
                 ),
+              ListTile(
+                leading: const Icon(Icons.mode_comment_outlined, color: AppColors.textPrimary),
+                title: const Text('查看评论'),
+                onTap: () {
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  CommentsPage.openSong(nav.context, song);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.playlist_add_rounded, color: AppColors.textPrimary),
                 title: const Text('收藏到歌单'),
@@ -460,6 +503,7 @@ class _QueueSheetState extends State<_QueueSheet> {
                         ? const Icon(Icons.graphic_eq_rounded, color: AppColors.accent)
                         : null,
                     onTap: () => player.jumpTo(i),
+                    onLongPress: () => showCopySongSheet(context, s),
                   );
                 },
               ),

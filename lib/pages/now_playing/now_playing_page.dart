@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import '../comments/comments_page.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/dev_badge.dart';
 import '../../widgets/flow_background.dart';
@@ -278,24 +280,29 @@ class _TitleRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                song.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: large ? 22 : 17, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                song.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: large ? 16 : 14, color: Colors.white60),
-              ),
-            ],
+          // 长按歌名 / 歌手选择复制哪个。
+          child: GestureDetector(
+            onLongPress: () => showCopySongSheet(context, song),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  song.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: large ? 22 : 17, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  song.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: large ? 16 : 14, color: Colors.white60),
+                ),
+              ],
+            ),
           ),
         ),
         LikeButton(
@@ -410,6 +417,17 @@ class _BottomRow extends StatelessWidget {
           filled: lyrics,
           background: Colors.white24,
           color: lyrics ? Colors.white : Colors.white60,
+          size: 40,
+          iconSize: 22,
+        ),
+        RoundIconButton(
+          icon: Icons.mode_comment_outlined,
+          onPressed: () {
+            final song = PlayerScope.read(context).current;
+            if (song != null) CommentsPage.openSong(context, song);
+          },
+          tooltip: '评论',
+          color: Colors.white60,
           size: 40,
           iconSize: 22,
         ),

@@ -77,6 +77,23 @@ class Playlist {
   final List<Color>? _palette;
 
   List<Color> get palette => _palette ?? fallbackPalette(id);
+
+  /// 换一个封面（[url] 为 null 时原样返回）。
+  Playlist withCover(String? url) => url == null || url == coverUrl
+      ? this
+      : Playlist(
+          id: id,
+          name: name,
+          playCount: playCount,
+          trackCount: trackCount,
+          coverUrl: url,
+          creator: creator,
+          creatorId: creatorId,
+          description: description,
+          subscribed: subscribed,
+          isLikedList: isLikedList,
+          palette: _palette,
+        );
 }
 
 class ArtistRef {
@@ -290,6 +307,95 @@ class Lyrics {
   bool get isEmpty => lines.isEmpty;
   bool get hasTranslation => lines.any((l) => l.translation != null);
   bool get hasRomaji => lines.any((l) => l.romaji != null);
+}
+
+/// 评论区属于哪类资源。网易云用 `前缀 + id` 作为评论区 id（threadId）。
+enum CommentTarget {
+  song('R_SO_4_'),
+  playlist('A_PL_0_'),
+  album('R_AL_3_');
+
+  const CommentTarget(this.prefix);
+
+  final String prefix;
+
+  String threadId(String id) => '$prefix$id';
+}
+
+/// 评论排序：按热度或按时间。
+enum CommentSort {
+  hot(2, '热门'),
+  latest(3, '最新');
+
+  const CommentSort(this.type, this.label);
+
+  /// 接口里的 sortType。
+  final int type;
+  final String label;
+}
+
+class CommentUser {
+  const CommentUser({required this.userId, required this.nickname, this.avatarUrl});
+
+  final int userId;
+  final String nickname;
+  final String? avatarUrl;
+}
+
+/// 一条评论。楼中楼回复也用它，[replyTo] 是被回复的那条（可能已删除，为 null）。
+class Comment {
+  const Comment({
+    required this.id,
+    required this.user,
+    required this.content,
+    required this.time,
+    this.likedCount = 0,
+    this.liked = false,
+    this.replyCount = 0,
+    this.replyTo,
+    this.location,
+  });
+
+  final int id;
+  final CommentUser user;
+  final String content;
+  final DateTime time;
+  final int likedCount;
+  final bool liked;
+
+  /// 楼层里的回复数。
+  final int replyCount;
+  final ({int id, String nickname, String content})? replyTo;
+
+  /// IP 属地，如「广东」。
+  final String? location;
+
+  Comment copyWith({int? likedCount, bool? liked, int? replyCount}) => Comment(
+    id: id,
+    user: user,
+    content: content,
+    time: time,
+    likedCount: likedCount ?? this.likedCount,
+    liked: liked ?? this.liked,
+    replyCount: replyCount ?? this.replyCount,
+    replyTo: replyTo,
+    location: location,
+  );
+}
+
+/// 一页评论。[cursor] 原样传给下一页。
+class CommentPage {
+  const CommentPage({
+    required this.comments,
+    required this.total,
+    required this.hasMore,
+    required this.cursor,
+  });
+
+  final List<Comment> comments;
+  final int total;
+  final bool hasMore;
+  final String cursor;
 }
 
 /// 根据 id 稳定地挑一组占位色。

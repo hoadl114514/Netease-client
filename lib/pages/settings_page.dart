@@ -31,7 +31,7 @@ class SettingsPage extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.login_rounded),
               title: const Text('登录账号'),
-              subtitle: const Text('扫码、手机号验证码或 Cookie；未登录时只能播放免费歌曲'),
+              subtitle: const Text('扫码或 Cookie；未登录时只能播放免费歌曲'),
               onTap: () => LoginPage.open(context),
             ),
           const _Header('播放'),
@@ -77,6 +77,13 @@ class SettingsPage extends StatelessWidget {
             title: const Text('显示罗马音'),
             value: settings.showRomaji,
             onChanged: (v) => settings.showRomaji = v,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.history_rounded),
+            title: const Text('同步最近播放到网易云'),
+            subtitle: const Text('登录后，听过的歌会出现在官方客户端的「最近播放」和听歌排行里'),
+            value: settings.syncRecentPlays,
+            onChanged: (v) => settings.syncRecentPlays = v,
           ),
           const _Header('关于'),
           const ListTile(

@@ -66,7 +66,7 @@ class NeteaseApi {
     );
   }
 
-  // ---------------------------------------------------------------- 扫码 / 手机号登录
+  // ---------------------------------------------------------------- 扫码登录
   //
   // 登录接口不带用户 Cookie。成功后网易云通过 Set-Cookie 下发 MUSIC_U 等字段，
   // 调用方拿到后交给 AccountController 验证并保存。
@@ -105,33 +105,6 @@ class NeteaseApi {
       avatarUrl: _https(_str(data['avatarUrl'])),
       cookies: status == QrStatus.confirmed ? parseSetCookie(res.headers['set-cookie']) : const {},
     );
-  }
-
-  /// 给手机号发登录验证码。
-  Future<void> sendCaptcha(String phone, {String countryCode = '86'}) => _api(
-    'https://music.163.com/api/sms/captcha/sent',
-    {'cellphone': phone, 'ctcode': countryCode},
-    anonymous: true,
-  );
-
-  /// 手机号 + 验证码登录，返回网易云下发的 Cookie。
-  Future<Map<String, String>> loginWithCaptcha(
-    String phone,
-    String captcha, {
-    String countryCode = '86',
-  }) async {
-    final res = await _post(Uri.parse('https://music.163.com/api/w/login/cellphone'), {
-      'type': '1',
-      'https': 'true',
-      'phone': phone,
-      'countrycode': countryCode,
-      'captcha': captcha,
-      'remember': 'true',
-    }, anonymous: true);
-    _check(_decodeJson(utf8.decode(res.bodyBytes)));
-    final cookies = parseSetCookie(res.headers['set-cookie']);
-    if (!cookies.containsKey('MUSIC_U')) throw const ApiException('登录失败：没有拿到登录凭证');
-    return cookies;
   }
 
   // ---------------------------------------------------------------- 搜索 / 详情
@@ -290,7 +263,27 @@ class NeteaseApi {
       for (final t in _list((raw as Map)['trackIds']))
         if (t is Map && t['id'] != null) '${t['id']}',
     ];
-    return (playlist: playlist, tracks: await songDetails(ids));
+    final tracks = await songDetails(ids);
+    // 没有封面的歌单用第一首歌的封面，和官方客户端一致。
+    final cover =
+        playlist.coverUrl ?? tracks.where((t) => t.coverUrl != null).firstOrNull?.coverUrl;
+    return (playlist: playlist.withCover(cover), tracks: tracks);
+  }
+
+  /// 歌单第一首歌的封面：歌单本身没有封面或封面加载失败时用它代替。只取一首，不拉全部歌曲。
+  Future<String?> playlistFirstCover(String id) async {
+    final data = await _api('https://music.163.com/api/v6/playlist/detail', {'id': id, 'n': '1'});
+    final raw = data['playlist'];
+    if (raw is! Map) return null;
+    for (final t in _list(raw['tracks'])) {
+      if (parseSong(t)?.coverUrl case final url?) return url;
+    }
+    final ids = [
+      for (final t in _list(raw['trackIds']).take(1))
+        if (t is Map && t['id'] != null) '${t['id']}',
+    ];
+    if (ids.isEmpty) return null;
+    return (await songDetails(ids)).firstOrNull?.coverUrl;
   }
 
   Future<Set<String>> likedSongIds(int userId) async {
@@ -409,6 +402,101 @@ class NeteaseApi {
           if (r is Map) ?parseSong(r['data']),
     ];
   }
+
+  /// 把一次播放上报给网易云，让它出现在官方客户端的「最近播放」和听歌排行里（需要登录）。
+  /// [seconds] 是实际听了多久；[sourceId] 是来源歌单 / 专辑 id。
+  Future<void> scrobble(String songId, {required int seconds, String? sourceId}) =>
+      _api('https://music.163.com/api/feedback/weblog', {
+        'logs': jsonEncode([
+          {
+            'action': 'play',
+            'json': {
+              'download': 0,
+              'end': 'playend',
+              'id': int.parse(songId),
+              'sourceId': sourceId ?? '',
+              'time': seconds,
+              'type': 'song',
+              'wifi': 0,
+              'source': 'list',
+              'mainsite': 1,
+              'content': '',
+            },
+          },
+        ]),
+      });
+
+  // ---------------------------------------------------------------- 评论
+
+  /// 一页评论。第一页 [cursor] 传 null，之后传上一页返回的 [CommentPage.cursor]。
+  Future<CommentPage> comments(
+    String threadId, {
+    CommentSort sort = CommentSort.hot,
+    int pageNo = 1,
+    int pageSize = 20,
+    String? cursor,
+  }) async {
+    final data = await _api('https://music.163.com/api/v2/resource/comments', {
+      'threadId': threadId,
+      'pageNo': '$pageNo',
+      'pageSize': '$pageSize',
+      'showInner': 'true',
+      'sortType': '${sort.type}',
+      'cursor': cursor ?? '0',
+    });
+    final d = data['data'];
+    if (d is! Map) return const CommentPage(comments: [], total: 0, hasMore: false, cursor: '0');
+    return CommentPage(
+      comments: [for (final c in _list(d['comments'])) ?parseComment(c)],
+      total: _int(d['totalCount']),
+      hasMore: d['hasMore'] == true,
+      cursor: '${d['cursor'] ?? '0'}',
+    );
+  }
+
+  /// 楼中楼：某条评论下的回复。第一页 [cursor] 传 null。
+  Future<CommentPage> floorComments(
+    String threadId,
+    int parentId, {
+    int limit = 20,
+    String? cursor,
+  }) async {
+    final data = await _api('https://music.163.com/api/resource/comment/floor/get', {
+      'parentCommentId': '$parentId',
+      'threadId': threadId,
+      'time': cursor ?? '-1',
+      'limit': '$limit',
+    });
+    final d = data['data'];
+    if (d is! Map) return const CommentPage(comments: [], total: 0, hasMore: false, cursor: '-1');
+    return CommentPage(
+      comments: [for (final c in _list(d['comments'])) ?parseComment(c)],
+      total: _int(d['totalCount']),
+      hasMore: d['hasMore'] == true,
+      cursor: '${d['time'] ?? '-1'}',
+    );
+  }
+
+  /// 给评论点赞 / 取消点赞（需要登录）。
+  Future<void> likeComment(String threadId, int commentId, bool like) => _api(
+    'https://music.163.com/api/v1/comment/${like ? 'like' : 'unlike'}',
+    {'threadId': threadId, 'commentId': '$commentId'},
+  );
+
+  /// 发评论；[replyTo] 不为 null 时是回复那条评论。返回新评论（接口没给时为 null）。
+  Future<Comment?> postComment(String threadId, String content, {int? replyTo}) async {
+    final data = await _api(
+      'https://music.163.com/api/resource/comments/${replyTo == null ? 'add' : 'reply'}',
+      {'threadId': threadId, 'content': content, 'commentId': ?replyTo?.toString()},
+    );
+    return parseComment(data['comment']);
+  }
+
+  /// 删除自己的评论。
+  Future<void> deleteComment(String threadId, int commentId) => _api(
+    'https://music.163.com/api/resource/comments/delete',
+    {'threadId': threadId, 'commentId': '$commentId'},
+  );
 
   // ---------------------------------------------------------------- 歌手 / 专辑
 
@@ -546,6 +634,36 @@ class NeteaseApi {
             ArtistRef('${a['id']}', '${a['name']}'),
       ],
       albumId: album is Map && _int(album['id']) > 0 ? '${album['id']}' : null,
+    );
+  }
+
+  static Comment? parseComment(Object? raw) {
+    if (raw is! Map || raw['commentId'] == null) return null;
+    final user = raw['user'];
+    final replied = _list(raw['beReplied']).firstOrNull;
+    final repliedUser = replied is Map ? replied['user'] : null;
+    final location = raw['ipLocation'];
+    return Comment(
+      id: _int(raw['commentId']),
+      user: CommentUser(
+        userId: user is Map ? _int(user['userId']) : 0,
+        nickname: user is Map ? '${user['nickname'] ?? ''}' : '',
+        avatarUrl: user is Map ? _https(_str(user['avatarUrl'])) : null,
+      ),
+      content: '${raw['content'] ?? ''}',
+      time: DateTime.fromMillisecondsSinceEpoch(_int(raw['time'])),
+      likedCount: _int(raw['likedCount']),
+      liked: raw['liked'] == true,
+      replyCount: _int(raw['replyCount']),
+      replyTo: replied is Map && repliedUser is Map
+          ? (
+              id: _int(replied['beRepliedCommentId']),
+              nickname: '${repliedUser['nickname'] ?? ''}',
+              // 被回复的评论已删除时 content 为 null。
+              content: _str(replied['content']) ?? '该评论已删除',
+            )
+          : null,
+      location: location is Map ? _str(location['location']) : null,
     );
   }
 

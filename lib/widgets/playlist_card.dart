@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/app.dart';
 import '../data/format.dart';
 import '../data/models.dart';
 import '../pages/library/playlist_page.dart';
@@ -7,6 +8,21 @@ import '../theme/app_theme.dart';
 import 'cover_art.dart';
 import 'hover_builder.dart';
 import 'round_icon_button.dart';
+
+final _firstCovers = <String, Future<String?>>{};
+
+/// 歌单封面的备用图：歌单第一首歌的封面。每个歌单只查一次，失败了下次再查。
+Future<String?> Function() playlistCoverFallback(BuildContext context, Playlist playlist) {
+  final api = AppScope.of(context).api;
+  final id = playlist.id;
+  return () => _firstCovers.putIfAbsent(
+    id,
+    () => api.playlistFirstCover(id).catchError((Object _) {
+      _firstCovers.remove(id);
+      return null;
+    }),
+  );
+}
 
 /// 按宽度自适应列数的歌单网格（sliver）。封面正方形 + 两行标题。
 class SliverPlaylistGrid extends StatelessWidget {
@@ -63,6 +79,7 @@ class PlaylistCard extends StatelessWidget {
                   palette: playlist.palette,
                   seed: playlist.id,
                   imageUrl: playlist.coverUrl,
+                  fallbackImage: playlistCoverFallback(context, playlist),
                   radius: AppRadius.panel,
                   shadow: hovered ? AppShadows.heavy : null,
                 ),

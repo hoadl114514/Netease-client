@@ -6,10 +6,12 @@ import 'package:flutter/rendering.dart';
 import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
+import 'lyrics_copy.dart';
 
 /// 歌词列表。当前行白色、放大并逐字填色（正在唱的字微微上浮发光），其他行半透明；
 /// [depth] 时离当前行越远越淡（景深效果），手动滚动期间恢复，方便查找。下方附翻译和罗马音。
-/// 当前行自动滚动到 [anchor] 处；[interactive] 时可手动滚动（之后暂停跟随几秒）和点行跳转。
+/// 当前行自动滚动到 [anchor] 处；[interactive] 时可手动滚动（之后暂停跟随几秒）、点行跳转、
+/// 长按复制（单句或批量）。
 ///
 /// 只滚动自身，不会带动外层滚动视图，所以可以嵌在播放页的卡片里。
 class LyricsView extends StatefulWidget {
@@ -155,6 +157,9 @@ class _LyricsViewState extends State<LyricsView> {
                           _follow(i, force: true);
                         }
                       : null,
+                  onLongPress: widget.interactive
+                      ? () => showLyricLineActions(context, player.song, lyrics, i)
+                      : null,
                 ),
             ],
           ),
@@ -200,6 +205,7 @@ class _LyricLine extends StatelessWidget {
     required this.showRomaji,
     required this.fade,
     required this.onTap,
+    this.onLongPress,
   });
 
   final LyricLine line;
@@ -213,6 +219,7 @@ class _LyricLine extends StatelessWidget {
   final bool showRomaji;
   final double fade;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -242,6 +249,7 @@ class _LyricLine extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: fontSize * 0.45),

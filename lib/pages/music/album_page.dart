@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app.dart';
 import '../../data/models.dart';
+import '../comments/comments_page.dart';
 import '../library/track_list_view.dart';
 import 'nav.dart';
 
@@ -35,6 +36,7 @@ class _AlbumPageState extends State<AlbumPage> {
       body: TrackListView(
         load: _load,
         queueTitle: '专辑：$title',
+        sourceId: widget.albumId,
         header: (context, tracks, playAll) => CollectionHeader(
           title: title,
           seed: widget.albumId,
@@ -47,6 +49,20 @@ class _AlbumPageState extends State<AlbumPage> {
                   '${a!.size > 0 ? ' · ${a.size} 首' : ''}',
           ],
           onPlayAll: playAll,
+          actions: [
+            IconButton(
+              tooltip: '评论',
+              onPressed: () => CommentsPage.open(
+                context,
+                target: CommentTarget.album,
+                id: widget.albumId,
+                title: title,
+                subtitle: a?.artist,
+                coverUrl: a?.coverUrl,
+              ),
+              icon: const Icon(Icons.mode_comment_outlined),
+            ),
+          ],
         ),
       ),
     );
