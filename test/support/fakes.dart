@@ -74,6 +74,10 @@ class FakeBackend implements PlaybackBackend {
   final lyricsMap = <(String, LyricSource), Lyrics>{};
   final urlRequests = <(String, AudioQuality)>[];
   final scrobbles = <({String id, Duration listened, String? sourceId})>[];
+  final starts = <String>[];
+
+  @override
+  Future<void> startPlay(Song song, {String? sourceId}) async => starts.add(song.id);
 
   @override
   Future<void> scrobble(Song song, {required Duration listened, String? sourceId}) async =>

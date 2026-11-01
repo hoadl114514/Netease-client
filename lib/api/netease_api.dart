@@ -403,28 +403,43 @@ class NeteaseApi {
     ];
   }
 
-  /// 把一次播放上报给网易云，让它出现在官方客户端的「最近播放」和听歌排行里（需要登录）。
-  /// [seconds] 是实际听了多久；[sourceId] 是来源歌单 / 专辑 id。
+  /// 播放日志（需要登录）。日志接口只认客户端身份：走 EAPI、发到 clientlog 域名、
+  /// 设备信息用 macOS 客户端的；网页 `/api/` 明文接口上报会返回成功但不生效。
+  ///
+  /// [startPlay] 在开始放一首歌时发 `startplay`，让它出现在官方客户端的「最近播放」；
+  /// [scrobble] 在听完 / 切走时发 `play`，给听歌排行计数。[sourceId] 是来源歌单 / 专辑 id。
+  Future<void> startPlay(String songId, {String? sourceId}) =>
+      _playLog('startplay', sourceId, {'id': int.parse(songId), 'type': 'song'});
+
+  /// [seconds] 是实际听了多久。
   Future<void> scrobble(String songId, {required int seconds, String? sourceId}) =>
-      _api('https://music.163.com/api/feedback/weblog', {
-        'logs': jsonEncode([
-          {
-            'action': 'play',
-            'json': {
-              'download': 0,
-              'end': 'playend',
-              'id': int.parse(songId),
-              'sourceId': sourceId ?? '',
-              'time': seconds,
-              'type': 'song',
-              'wifi': 0,
-              'source': 'list',
-              'mainsite': 1,
-              'content': '',
-            },
-          },
-        ]),
+      _playLog('play', sourceId, {
+        'download': 0,
+        'end': 'playend',
+        'id': int.parse(songId),
+        'sourceId': sourceId ?? '',
+        'time': seconds,
+        'type': 'song',
+        'wifi': 0,
+        'source': 'list',
       });
+
+  Future<void> _playLog(String action, String? sourceId, Map<String, Object?> json) => _eapi(
+    '/api/feedback/weblog',
+    {
+      'logs': jsonEncode([
+        {
+          'action': action,
+          'json': {...json, 'mainsite': '1', 'mainsiteWeb': '1', 'content': 'id=${sourceId ?? ''}'},
+        },
+      ]),
+    },
+    host: 'https://clientlog.music.163.com',
+    device: _logDevice,
+  );
+
+  /// 上报日志时用的客户端身份（macOS 客户端）。
+  static const _logDevice = {'os': 'osx', 'appver': '3.1.10.5100', 'osver': '15.5'};
 
   // ---------------------------------------------------------------- 评论
 
@@ -737,11 +752,15 @@ class NeteaseApi {
 
   // ---------------------------------------------------------------- 传输
 
-  Map<String, String> _headers({bool anonymous = false}) => {
-    'User-Agent': _userAgent,
+  Map<String, String> _headers({bool anonymous = false, Map<String, String> device = const {}}) => {
+    'User-Agent': device['os'] == 'osx' ? _macUserAgent : _userAgent,
     'Referer': 'https://music.163.com/',
-    'Cookie': encodeCookie({..._deviceCookies, if (!anonymous) ..._cookies}),
+    'Cookie': encodeCookie({..._deviceCookies, if (!anonymous) ..._cookies, ...device}),
   };
+
+  static const _macUserAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   Future<Map<String, Object?>> _api(
     String url,
@@ -757,11 +776,16 @@ class NeteaseApi {
     Map<String, Object?> params, {
     String host = 'https://interface3.music.163.com',
     bool encryptedResponse = false,
+    Map<String, String> device = const {},
   }) async {
     final header = {
       ..._deviceCookies,
       'deviceId': _cookies['deviceId'] ?? _deviceCookies['deviceId']!,
+      ...device,
       'requestId': '${20000000 + _random.nextInt(10000000)}',
+      // 登录态也放进加密头里，日志类接口按这里识别账号。
+      if (_cookies['MUSIC_U'] case final u? when device.isNotEmpty) 'MUSIC_U': u,
+      if (_cookies['__csrf'] case final c? when device.isNotEmpty) '__csrf': c,
     };
     final payload = jsonEncode({
       ...params,
@@ -769,7 +793,7 @@ class NeteaseApi {
       'header': jsonEncode(header),
     });
     final url = Uri.parse('$host${apiPath.replaceFirst('/api/', '/eapi/')}');
-    final res = await _post(url, {'params': EapiCrypto.encrypt(apiPath, payload)});
+    final res = await _post(url, {'params': EapiCrypto.encrypt(apiPath, payload)}, device: device);
     final String body;
     try {
       body = encryptedResponse ? EapiCrypto.decrypt(res.bodyBytes) : utf8.decode(res.bodyBytes);
@@ -779,13 +803,18 @@ class NeteaseApi {
     return _check(_decodeJson(body));
   }
 
-  Future<http.Response> _post(Uri url, Map<String, String> form, {bool anonymous = false}) async {
+  Future<http.Response> _post(
+    Uri url,
+    Map<String, String> form, {
+    bool anonymous = false,
+    Map<String, String> device = const {},
+  }) async {
     final http.Response res;
     try {
       res = await _client
           .post(
             url,
-            headers: _headers(anonymous: anonymous),
+            headers: _headers(anonymous: anonymous, device: device),
             body: form,
           )
           .timeout(_timeout);

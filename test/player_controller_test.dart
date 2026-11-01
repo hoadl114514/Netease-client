@@ -233,6 +233,8 @@ void main() {
       expect(backend.scrobbles.single.id, '1');
       expect(backend.scrobbles.single.sourceId, 'pl1');
       expect(backend.scrobbles.single.listened, greaterThanOrEqualTo(const Duration(seconds: 30)));
+      // 「开始播放」一放就报，进官方的最近播放。
+      expect(backend.starts, ['1', '2']);
 
       // 只听了几秒就切走：不上报。
       await listen(tester, 5);
@@ -262,6 +264,7 @@ void main() {
       engine.complete();
       await tester.pump(const Duration(milliseconds: 60));
       expect(backend.scrobbles.map((s) => s.id), ['1', '1']);
+      expect(backend.starts, ['1', '1', '1']);
       await player.pause();
     });
 
@@ -271,6 +274,7 @@ void main() {
       await listen(tester, 40);
       await player.next();
       expect(backend.scrobbles, isEmpty);
+      expect(backend.starts, isEmpty);
       await player.pause();
     });
   });
