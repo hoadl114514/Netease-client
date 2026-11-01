@@ -47,10 +47,10 @@ class JustAudioEngine implements AudioEngine {
 
   @override
   Future<void> load(String url, {Duration start = Duration.zero}) async {
-    await _player.setAudioSource(
-      AudioSource.uri(Uri.parse(url), headers: const {'Referer': 'https://music.163.com/'}),
-      initialPosition: start,
-    );
+    // 不要传 headers：just_audio 遇到 headers 会在本机起一个明文 HTTP 代理（127.0.0.1）转发请求，
+    // 而网络安全配置只对 126.net 放开了明文，代理会被拦，表现为 "(0) Source error"。
+    // 网易云音频 CDN 不校验 Referer，直接请求即可。
+    await _player.setAudioSource(AudioSource.uri(Uri.parse(url)), initialPosition: start);
   }
 
   /// just_audio 的 play() 要等到暂停或播完才返回，这里不等它。
