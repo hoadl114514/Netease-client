@@ -3,17 +3,16 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/backdrop_color.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/dev_badge.dart';
+import '../../widgets/flow_background.dart';
 import '../../widgets/like_button.dart';
 import '../../widgets/round_icon_button.dart';
-import 'lyrics_page.dart';
 import 'lyrics_view.dart';
 import 'player_controls.dart';
 import 'song_menu.dart';
 
-/// 从底部滑出的页面路由，播放页和全屏歌词共用。
+/// 从底部滑出的页面路由。
 Route<void> slideUpRoute(Widget page) => PageRouteBuilder<void>(
   transitionDuration: const Duration(milliseconds: 380),
   reverseTransitionDuration: const Duration(milliseconds: 300),
@@ -30,318 +29,314 @@ Route<void> slideUpRoute(Widget page) => PageRouteBuilder<void>(
   ),
 );
 
-/// 打开播放页；[showLyrics] 为 true 时直接打开全屏歌词。
+/// 打开播放页；[showLyrics] 为 true 时直接显示歌词。
 Future<void> openNowPlaying(BuildContext context, {bool showLyrics = false}) =>
-    Navigator.of(context)
-        .push(slideUpRoute(showLyrics ? const LyricsPage() : const NowPlayingPage()));
+    Navigator.of(context).push(slideUpRoute(NowPlayingPage(initialLyrics: showLyrics)));
 
-/// 全屏播放页：第一屏是封面和控制，往下滑是歌词预览和歌手卡片。
-class NowPlayingPage extends StatelessWidget {
-  const NowPlayingPage({super.key});
+/// 全屏播放页：流光背景，中间在「封面」和「歌词」两种模式间切换，下方控制区两种模式共用。
+/// 下滑收起。
+class NowPlayingPage extends StatefulWidget {
+  const NowPlayingPage({super.key, this.initialLyrics = false});
+
+  final bool initialLyrics;
+
+  @override
+  State<NowPlayingPage> createState() => _NowPlayingPageState();
+}
+
+class _NowPlayingPageState extends State<NowPlayingPage> {
+  late bool _lyrics = widget.initialLyrics;
+
+  void _toggleLyrics() => setState(() => _lyrics = !_lyrics);
 
   @override
   Widget build(BuildContext context) {
     final player = PlayerScope.of(context);
     final song = player.current;
     if (song == null) return const Scaffold(backgroundColor: AppColors.background);
-    final color = backdropColorFor(player.palette);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: AnimatedContainer(
-        duration: const Duration(milliseconds: 600),
-        decoration: backdropDecoration(color),
-        child: SafeArea(
-          bottom: false,
-          child: LayoutBuilder(
-            builder: (context, c) => CustomScrollView(
-              slivers: [
-                // 第一屏正好占满视口，往下滑才露出卡片。
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: c.maxHeight,
-                    child: _PlayerSection(song: song),
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        // 歌词列表、进度条自己的拖动优先；这里只接空白处的快速下滑。
+        onVerticalDragEnd: (d) {
+          if ((d.primaryVelocity ?? 0) > 700) Navigator.of(context).maybePop();
+        },
+        child: FlowBackground(
+          palette: player.palette,
+          imageUrl: song.coverUrl,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Column(
+                children: [
+                  const _TopBar(),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, a) => FadeTransition(
+                        opacity: a,
+                        child: ScaleTransition(
+                          scale: Tween(begin: 0.96, end: 1.0).animate(a),
+                          child: child,
+                        ),
+                      ),
+                      child: _lyrics
+                          ? _LyricsPane(
+                              key: const ValueKey('lyrics'),
+                              song: song,
+                              onTapHeader: _toggleLyrics,
+                            )
+                          : _CoverPane(
+                              key: const ValueKey('cover'),
+                              song: song,
+                              onTapCover: _toggleLyrics,
+                            ),
+                    ),
                   ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  sliver: SliverList.list(
-                    children: [
-                      _LyricsCard(color: color),
-                      const SizedBox(height: 16),
-                      _ArtistCard(song: song),
-                      SizedBox(height: MediaQuery.paddingOf(context).bottom + 16),
-                    ],
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  const SeekBar(),
+                  const SizedBox(height: 4),
+                  const _QualityPill(),
+                  const SizedBox(height: 8),
+                  const _Controls(),
+                  const SizedBox(height: 12),
+                  _BottomRow(lyrics: _lyrics, onToggleLyrics: _toggleLyrics),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PlayerSection extends StatelessWidget {
-  const _PlayerSection({required this.song});
-
-  final Song song;
-
-  @override
-  Widget build(BuildContext context) {
-    final player = PlayerScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
-      child: Column(
-        children: [
-          _TopBar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Hero(
-                  tag: 'now-playing-cover',
-                  child: AnimatedScale(
-                    // 暂停时封面略微缩小，给一点"停下来"的反馈。
-                    scale: player.isPlaying ? 1 : 0.9,
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeOutBack,
-                    child: CoverArt(
-                      palette: song.palette,
-                      seed: song.id,
-                      imageUrl: song.coverUrl,
-                      radius: AppRadius.card,
-                      shadow: AppShadows.heavy,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      song.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        // 当前音质放在歌手名前面，做成小徽章，点开切换。
-                        if (player.quality case final q?)
-                          GestureDetector(
-                            onTap: () => showQualitySheet(context),
-                            child: _Badge(q.badge),
-                          ),
-                        if (player.trial != null) const _Badge('试听'),
-                        Flexible(
-                          child: Text(
-                            song.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 15, color: Colors.white70),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              LikeButton(songId: song.id, size: 44, iconSize: 28, color: Colors.white),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const SeekBar(),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              RoundIconButton(
-                icon: Icons.shuffle_rounded,
-                onPressed: player.toggleShuffle,
-                tooltip: player.shuffle ? '关闭随机播放' : '随机播放',
-                color: player.shuffle ? AppColors.accent : Colors.white,
-                size: 44,
-                iconSize: 26,
-              ),
-              RoundIconButton(
-                icon: Icons.skip_previous_rounded,
-                onPressed: player.previous,
-                tooltip: '上一首',
-                color: Colors.white,
-                size: 56,
-                iconSize: 42,
-              ),
-              const PlayPauseButton(size: 68),
-              RoundIconButton(
-                icon: Icons.skip_next_rounded,
-                onPressed: player.next,
-                tooltip: '下一首',
-                color: Colors.white,
-                size: 56,
-                iconSize: 42,
-              ),
-              RoundIconButton(
-                icon: player.repeat == Repeat.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-                onPressed: player.toggleRepeat,
-                tooltip: player.repeat == Repeat.one ? '单曲循环' : '列表循环',
-                color: AppColors.accent,
-                size: 44,
-                iconSize: 26,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              RoundIconButton(
-                icon: Icons.speaker_group_outlined,
-                onPressed: () => showNotReady('播放设备'),
-                tooltip: '播放设备',
-                color: Colors.white70,
-                size: 40,
-                iconSize: 22,
-              ),
-              const Spacer(),
-              const _QualityButton(),
-              const Spacer(),
-              RoundIconButton(
-                icon: Icons.ios_share_rounded,
-                onPressed: () => showNotReady('分享'),
-                tooltip: '分享',
-                color: Colors.white70,
-                size: 40,
-                iconSize: 22,
-              ),
-              RoundIconButton(
-                icon: Icons.queue_music_rounded,
-                onPressed: () => showQueueSheet(context),
-                tooltip: '播放列表',
-                color: Colors.white70,
-                size: 40,
-                iconSize: 22,
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
 }
 
 class _TopBar extends StatelessWidget {
+  const _TopBar();
+
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        RoundIconButton(
-          icon: Icons.keyboard_arrow_down_rounded,
-          onPressed: Navigator.of(context).maybePop,
-          tooltip: '收起',
-          color: Colors.white,
-          iconSize: 30,
+        const SizedBox(height: 6),
+        // 下拉提示条。
+        Container(
+          width: 36,
+          height: 5,
+          decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(3)),
         ),
-        Expanded(
-          child: Column(
-            children: [
-              const Text(
-                '正在播放',
-                style: TextStyle(fontSize: 11, letterSpacing: 1, color: Colors.white70),
-              ),
-              Text(
+        Row(
+          children: [
+            RoundIconButton(
+              icon: Icons.keyboard_arrow_down_rounded,
+              onPressed: Navigator.of(context).maybePop,
+              tooltip: '收起',
+              color: Colors.white70,
+              iconSize: 28,
+            ),
+            Expanded(
+              child: Text(
                 PlayerScope.of(context).queueTitle,
+                textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                style: const TextStyle(fontSize: 13, color: Colors.white70),
               ),
-            ],
-          ),
-        ),
-        RoundIconButton(
-          icon: Icons.more_horiz_rounded,
-          onPressed: () => showSongMenu(context),
-          tooltip: '更多',
-          color: Colors.white,
-          iconSize: 26,
+            ),
+            RoundIconButton(
+              icon: Icons.more_horiz_rounded,
+              onPressed: () => showSongMenu(context),
+              tooltip: '更多',
+              color: Colors.white70,
+              iconSize: 24,
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge(this.label);
+/// 封面模式：大封面 + 歌名歌手。点封面切到歌词。
+class _CoverPane extends StatelessWidget {
+  const _CoverPane({super.key, required this.song, required this.onTapCover});
 
-  final String label;
+  final Song song;
+  final VoidCallback onTapCover;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(2)),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black),
-      ),
+    final playing = PlayerScope.of(context).isPlaying;
+    return Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: GestureDetector(
+              onTap: onTapCover,
+              child: Hero(
+                tag: 'now-playing-cover',
+                child: AnimatedScale(
+                  // 暂停时封面缩小一点，播放时弹回。
+                  scale: playing ? 1 : 0.86,
+                  duration: const Duration(milliseconds: 500),
+                  curve: playing ? Curves.easeOutBack : Curves.easeOutCubic,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 500),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: playing ? 0.45 : 0.25),
+                          offset: Offset(0, playing ? 18 : 8),
+                          blurRadius: playing ? 40 : 20,
+                        ),
+                      ],
+                    ),
+                    child: CoverArt(
+                      palette: song.palette,
+                      seed: song.id,
+                      imageUrl: song.coverUrl,
+                      radius: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _TitleRow(song: song, large: true),
+      ],
     );
   }
 }
 
-/// 歌词预览：卡片里跟着播放滚动，点卡片进入全屏歌词。
-class _LyricsCard extends StatelessWidget {
-  const _LyricsCard({required this.color});
+/// 歌词模式：顶部小封面和歌名，下面是歌词。点顶部回到封面。
+class _LyricsPane extends StatelessWidget {
+  const _LyricsPane({super.key, required this.song, required this.onTapHeader});
 
-  final Color color;
+  final Song song;
+  final VoidCallback onTapHeader;
 
   @override
   Widget build(BuildContext context) {
-    void open() => Navigator.of(context).push(slideUpRoute(const LyricsPage()));
-    return Material(
-      color: Color.lerp(color, Colors.white, 0.12),
-      borderRadius: BorderRadius.circular(AppRadius.panel),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: open,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      children: [
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: onTapHeader,
+          behavior: HitTestBehavior.opaque,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  const Text('歌词预览', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                  const Spacer(),
-                  RoundIconButton(
-                    icon: Icons.open_in_full_rounded,
-                    onPressed: open,
-                    tooltip: '全屏歌词',
-                    filled: true,
-                    background: Colors.black26,
-                    color: Colors.white,
-                    size: 32,
-                    iconSize: 16,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const SizedBox(
-                height: 300,
-                child: LyricsView(
-                  fontSize: 20,
-                  interactive: false,
-                  anchor: 0.15,
-                  padding: EdgeInsets.only(right: 8),
+              SizedBox.square(
+                dimension: 52,
+                child: CoverArt(
+                  palette: song.palette,
+                  seed: song.id,
+                  imageUrl: song.coverUrl,
+                  radius: 6,
+                  shadow: AppShadows.medium,
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(child: _TitleRow(song: song, large: false)),
             ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Expanded(
+          child: ShaderMask(
+            // 上下边缘淡出。
+            shaderCallback: _fadeEdges,
+            blendMode: BlendMode.dstIn,
+            child: LyricsView(fontSize: 28, anchor: 0.25, blur: true),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Shader _fadeEdges(Rect r) => const LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
+  stops: [0, 0.08, 0.88, 1],
+).createShader(r);
+
+class _TitleRow extends StatelessWidget {
+  const _TitleRow({required this.song, required this.large});
+
+  final Song song;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                song.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: large ? 22 : 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                song.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: large ? 16 : 14, color: Colors.white60),
+              ),
+            ],
+          ),
+        ),
+        LikeButton(
+          songId: song.id,
+          size: large ? 44 : 40,
+          iconSize: large ? 26 : 24,
+          color: Colors.white,
+        ),
+      ],
+    );
+  }
+}
+
+/// 进度条下方居中的音质标签，点开选择。只列出这首歌提供的档位。
+class _QualityPill extends StatelessWidget {
+  const _QualityPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final player = PlayerScope.of(context);
+    final q = player.quality;
+    final label = [
+      if (q != null) q.label else if (player.isLoading) '加载中' else '音质',
+      if (player.trial != null) '试听',
+    ].join(' · ');
+    return Material(
+      color: Colors.white.withValues(alpha: 0.12),
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: player.qualities.isEmpty ? null : () => showQualitySheet(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: Colors.white70,
+            ),
           ),
         ),
       ),
@@ -349,127 +344,92 @@ class _LyricsCard extends StatelessWidget {
   }
 }
 
-class _ArtistCard extends StatelessWidget {
-  const _ArtistCard({required this.song});
-
-  final Song song;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surfaceHigh,
-      borderRadius: BorderRadius.circular(AppRadius.panel),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: 180,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 占位：接 API 后换成歌手图。
-                FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox.square(
-                    dimension: 200,
-                    child: CoverArt(
-                      palette: song.palette.reversed.toList(),
-                      seed: song.artist,
-                      imageUrl: song.coverUrl,
-                      radius: 0,
-                    ),
-                  ),
-                ),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x66000000), Color(0x00000000)],
-                    ),
-                  ),
-                ),
-                const Positioned(
-                  left: 16,
-                  top: 14,
-                  child: Text('关于歌手', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            song.artist,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                          ),
-                          if (song.album.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              '专辑：${song.album}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => showNotReady('关注歌手'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: AppColors.outline),
-                        shape: const StadiumBorder(),
-                      ),
-                      child: const Text('关注'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                const Row(
-                  children: [
-                    DevBadge(),
-                    SizedBox(width: 8),
-                    Text(
-                      '歌手简介、热门歌曲',
-                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 当前音质，点开选择。只列出这首歌提供的档位。
-class _QualityButton extends StatelessWidget {
-  const _QualityButton();
+class _Controls extends StatelessWidget {
+  const _Controls();
 
   @override
   Widget build(BuildContext context) {
     final player = PlayerScope.of(context);
-    final q = player.quality;
-    return TextButton.icon(
-      onPressed: player.qualities.isEmpty ? null : () => showQualitySheet(context),
-      icon: const Icon(Icons.graphic_eq_rounded, size: 18),
-      label: Text(q?.label ?? (player.isLoading ? '加载中' : '音质')),
-      style: TextButton.styleFrom(foregroundColor: Colors.white70),
+    final one = player.repeat == Repeat.one;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        RoundIconButton(
+          icon: Icons.shuffle_rounded,
+          onPressed: player.toggleShuffle,
+          tooltip: player.shuffle ? '关闭随机播放' : '随机播放',
+          color: player.shuffle ? Colors.white : Colors.white38,
+          size: 44,
+          iconSize: 22,
+        ),
+        RoundIconButton(
+          icon: Icons.fast_rewind_rounded,
+          onPressed: player.previous,
+          tooltip: '上一首',
+          color: Colors.white,
+          size: 60,
+          iconSize: 40,
+        ),
+        const PlayPauseButton(size: 76),
+        RoundIconButton(
+          icon: Icons.fast_forward_rounded,
+          onPressed: player.next,
+          tooltip: '下一首',
+          color: Colors.white,
+          size: 60,
+          iconSize: 40,
+        ),
+        RoundIconButton(
+          icon: one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+          onPressed: player.toggleRepeat,
+          tooltip: one ? '单曲循环' : '列表循环',
+          color: one ? Colors.white : Colors.white38,
+          size: 44,
+          iconSize: 22,
+        ),
+      ],
+    );
+  }
+}
+
+class _BottomRow extends StatelessWidget {
+  const _BottomRow({required this.lyrics, required this.onToggleLyrics});
+
+  final bool lyrics;
+  final VoidCallback onToggleLyrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        RoundIconButton(
+          icon: lyrics ? Icons.lyrics_rounded : Icons.lyrics_outlined,
+          onPressed: onToggleLyrics,
+          tooltip: lyrics ? '关闭歌词' : '歌词',
+          filled: lyrics,
+          background: Colors.white24,
+          color: lyrics ? Colors.white : Colors.white60,
+          size: 40,
+          iconSize: 22,
+        ),
+        RoundIconButton(
+          icon: Icons.speaker_group_outlined,
+          onPressed: () => showNotReady('播放设备'),
+          tooltip: '播放设备',
+          color: Colors.white60,
+          size: 40,
+          iconSize: 22,
+        ),
+        RoundIconButton(
+          icon: Icons.format_list_bulleted_rounded,
+          onPressed: () => showQueueSheet(context),
+          tooltip: '播放列表',
+          color: Colors.white60,
+          size: 40,
+          iconSize: 22,
+        ),
+      ],
     );
   }
 }

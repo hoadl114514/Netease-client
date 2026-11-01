@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -5,7 +8,8 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
 
-/// 歌词列表。已唱过的行偏白、未唱的行压暗，当前行逐字填色，下方附翻译和罗马音。
+/// 歌词列表。当前行白色、放大并逐字填色（正在唱的字微微上浮发光），其他行半透明；
+/// [blur] 时离当前行越远越模糊，手动滚动期间取消模糊方便查找。下方附翻译和罗马音。
 /// 当前行自动滚动到 [anchor] 处；[interactive] 时可手动滚动（之后暂停跟随几秒）和点行跳转。
 ///
 /// 只滚动自身，不会带动外层滚动视图，所以可以嵌在播放页的卡片里。
@@ -16,6 +20,7 @@ class LyricsView extends StatefulWidget {
     this.interactive = true,
     this.anchor = 0.3,
     this.padding = EdgeInsets.zero,
+    this.blur = false,
   });
 
   final double fontSize;
@@ -24,6 +29,7 @@ class LyricsView extends StatefulWidget {
   /// 当前行停在视口高度的哪个比例处。
   final double anchor;
   final EdgeInsets padding;
+  final bool blur;
 
   @override
   State<LyricsView> createState() => _LyricsViewState();
@@ -72,8 +78,9 @@ class _LyricsViewState extends State<LyricsView> {
       } else {
         _scroll.animateTo(
           offset,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
+          duration: const Duration(milliseconds: 700),
+          // 略带回弹，接近弹簧滚动的手感。
+          curve: Curves.easeOutBack,
         );
       }
     });
@@ -105,6 +112,8 @@ class _LyricsViewState extends State<LyricsView> {
     }
     final showTranslation = settings.showTranslation;
     final showRomaji = settings.showRomaji;
+    final browsing = DateTime.now().difference(_userScrolledAt) < _followPause;
+    final blur = widget.blur && !browsing && active >= 0;
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -135,6 +144,7 @@ class _LyricsViewState extends State<LyricsView> {
                   wordSynced: lyrics.wordSynced,
                   showTranslation: showTranslation,
                   showRomaji: showRomaji,
+                  blur: blur ? _blurFor((i - active).abs()) : 0,
                   onTap: widget.interactive
                       ? () {
                           player.seek(
@@ -153,7 +163,10 @@ class _LyricsViewState extends State<LyricsView> {
         if (!widget.interactive) return list;
         return NotificationListener<UserScrollNotification>(
           onNotification: (_) {
+            final wasBrowsing = DateTime.now().difference(_userScrolledAt) < _followPause;
             _userScrolledAt = DateTime.now();
+            // 开始手动滚动时立刻去掉模糊（暂停时没有进度刷新来触发重建）。
+            if (!wasBrowsing && widget.blur) setState(() {});
             return false;
           },
           child: ScrollConfiguration(
@@ -164,12 +177,15 @@ class _LyricsViewState extends State<LyricsView> {
       },
     );
   }
+
+  /// 和当前行相距 [d] 行时的模糊半径。只给附近几行加，远处的行在淡出区里，省掉开销。
+  static double _blurFor(int d) => d == 0 || d > 6 ? 0 : math.min(d * 0.9, 4.0);
 }
 
 enum _LineState { past, active, future }
 
-/// 未唱部分的颜色：在彩色背景上压暗，而不是变灰。
-const _unsung = Color(0x73000000);
+/// 非当前行和未唱部分的颜色。
+const _dim = Color(0x61FFFFFF);
 const _sung = Colors.white;
 
 class _LyricLine extends StatelessWidget {
@@ -182,6 +198,7 @@ class _LyricLine extends StatelessWidget {
     required this.wordSynced,
     required this.showTranslation,
     required this.showRomaji,
+    required this.blur,
     required this.onTap,
   });
 
@@ -194,11 +211,12 @@ class _LyricLine extends StatelessWidget {
   final bool wordSynced;
   final bool showTranslation;
   final bool showRomaji;
+  final double blur;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800, height: 1.3);
+    final style = TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800, height: 1.25);
     final Widget main = switch (state) {
       _LineState.active when !wordSynced => Text(line.text, style: style.copyWith(color: _sung)),
       _LineState.active => Wrap(
@@ -207,47 +225,66 @@ class _LyricLine extends StatelessWidget {
             _KaraokeWord(text: w.text, progress: w.progressAt(position), style: style),
         ],
       ),
-      _LineState.past => Text(
-        line.text,
-        style: style.copyWith(color: _sung.withValues(alpha: 0.7)),
-      ),
-      _LineState.future => Text(line.text, style: style.copyWith(color: _unsung)),
+      _LineState.past || _LineState.future => Text(line.text, style: style.copyWith(color: _dim)),
     };
-    final sub = switch (state) {
-      _LineState.active => _sung.withValues(alpha: 0.85),
-      _LineState.past => _sung.withValues(alpha: 0.55),
-      _LineState.future => _unsung,
-    };
+    final active = state == _LineState.active;
+    final sub = active ? _sung.withValues(alpha: 0.8) : _dim;
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: fontSize * 0.4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            main,
-            if (line.translation case final t? when showTranslation) ...[
-              SizedBox(height: fontSize * 0.2),
-              Text(
-                t,
-                style: TextStyle(fontSize: fontSize * 0.6, fontWeight: FontWeight.w600, color: sub),
-              ),
+        padding: EdgeInsets.symmetric(vertical: fontSize * 0.45),
+        child: _effects(
+          active,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              main,
+              if (line.translation case final t? when showTranslation) ...[
+                SizedBox(height: fontSize * 0.2),
+                Text(
+                  t,
+                  style: TextStyle(
+                    fontSize: fontSize * 0.6,
+                    fontWeight: FontWeight.w600,
+                    color: sub,
+                  ),
+                ),
+              ],
+              if (line.romaji case final r? when showRomaji)
+                Text(
+                  r,
+                  style: TextStyle(fontSize: fontSize * 0.48, letterSpacing: 0.3, color: sub),
+                ),
             ],
-            if (line.romaji case final r? when showRomaji)
-              Text(
-                r,
-                style: TextStyle(fontSize: fontSize * 0.48, letterSpacing: 0.3, color: sub),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  /// 当前行原尺寸，其他行略小（左对齐缩放）；再按距离加模糊。
+  Widget _effects(bool active, Widget child) {
+    Widget out = AnimatedScale(
+      scale: active ? 1 : 0.94,
+      alignment: Alignment.centerLeft,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+      child: child,
+    );
+    if (blur > 0) {
+      out = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal),
+        child: out,
+      );
+    }
+    return out;
+  }
 }
 
-/// 单个字的逐字填色：底层压暗文字，上层白色文字按 [progress] 从左往右显现。
+/// 单个字的逐字填色：底层半透明文字，上层白色文字按 [progress] 从左往右显现；
+/// 唱这个字时整体上浮一点并带柔光，唱完保持上浮。
 class _KaraokeWord extends StatelessWidget {
   const _KaraokeWord({required this.text, required this.progress, required this.style});
 
@@ -257,10 +294,28 @@ class _KaraokeWord extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dim = Text(text, style: style.copyWith(color: _unsung));
-    final lit = Text(text, style: style.copyWith(color: _sung));
+    final dim = Text(text, style: style.copyWith(color: _dim));
     if (progress <= 0) return dim;
-    if (progress >= 1) return lit;
+    // 光晕在唱到一半时最亮，唱完消失。
+    final glow = math.sin(math.pi * progress.clamp(0.0, 1.0)) * 0.55;
+    final lit = Text(
+      text,
+      style: style.copyWith(
+        color: _sung,
+        shadows: glow > 0.01
+            ? [Shadow(color: Colors.white.withValues(alpha: glow), blurRadius: 12)]
+            : null,
+      ),
+    );
+    final lift = Offset(
+      0,
+      -0.08 * style.fontSize! * Curves.easeOut.transform(progress.clamp(0.0, 1.0)),
+    );
+    if (progress >= 1) return Transform.translate(offset: lift, child: lit);
+    return Transform.translate(offset: lift, child: _fill(dim, lit));
+  }
+
+  Widget _fill(Widget dim, Widget lit) {
     return Stack(
       children: [
         dim,
