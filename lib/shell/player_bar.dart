@@ -4,16 +4,19 @@ import '../pages/now_playing/now_playing_page.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cover_art.dart';
+import '../widgets/like_button.dart';
 import '../widgets/round_icon_button.dart';
 
 /// 底部迷你播放条。顶边是一条可点按、拖动的细进度条，点歌曲信息进入播放页。
+/// 队列为空时不显示。
 class PlayerBar extends StatelessWidget {
   const PlayerBar({super.key});
 
   @override
   Widget build(BuildContext context) {
     final player = PlayerScope.of(context);
-    final song = player.song;
+    final song = player.current;
+    if (song == null) return const SizedBox.shrink();
 
     return Material(
       color: AppColors.surface,
@@ -37,7 +40,12 @@ class PlayerBar extends StatelessWidget {
                             width: 48,
                             child: Hero(
                               tag: 'now-playing-cover',
-                              child: CoverArt(palette: song.palette, seed: song.id, radius: 6),
+                              child: CoverArt(
+                                palette: song.palette,
+                                seed: song.id,
+                                imageUrl: song.coverUrl,
+                                radius: 6,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -69,14 +77,7 @@ class PlayerBar extends StatelessWidget {
                       ),
                     ),
                   ),
-                  RoundIconButton(
-                    icon: player.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    color: player.isLiked ? AppColors.accent : null,
-                    onPressed: player.toggleLike,
-                    tooltip: player.isLiked ? '取消喜欢' : '喜欢',
-                    size: 40,
-                    iconSize: 22,
-                  ),
+                  LikeButton(songId: song.id),
                   const SizedBox(width: 4),
                   RoundIconButton(
                     icon: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -124,7 +125,7 @@ class _SeekLineState extends State<_SeekLine> {
     return LayoutBuilder(
       builder: (context, c) {
         double toFraction(double dx) => (dx / c.maxWidth).clamp(0.0, 1.0);
-        void commit(double f) => player.seek(player.song.duration * f);
+        void commit(double f) => player.seek(player.duration * f);
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,

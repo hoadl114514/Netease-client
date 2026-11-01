@@ -1,0 +1,106 @@
+import 'package:flutter/material.dart';
+
+import '../app/app.dart';
+import '../app/app_info.dart';
+import '../data/models.dart';
+import '../state/account_controller.dart';
+import '../theme/app_theme.dart';
+import 'login_page.dart';
+
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = AppScope.of(context).settings;
+    final account = AccountScope.of(context);
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => ListView(
+        children: [
+          const _Header('账号'),
+          if (account.profile case final p?)
+            ListTile(
+              leading: const Icon(Icons.person_rounded),
+              title: Text(p.nickname),
+              subtitle: Text('UID ${p.userId}${p.vipType > 0 ? ' · 会员' : ''}'),
+              trailing: TextButton(onPressed: account.logout, child: const Text('退出登录')),
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.login_rounded),
+              title: const Text('Cookie 登录'),
+              subtitle: const Text('未登录时只能播放免费歌曲的标准音质'),
+              onTap: () => LoginPage.open(context),
+            ),
+          const _Header('播放'),
+          ListTile(
+            leading: const Icon(Icons.high_quality_rounded),
+            title: const Text('默认音质'),
+            subtitle: const Text('歌曲没有这一档时，自动选它有的最高档'),
+            trailing: DropdownButton<AudioQuality>(
+              value: settings.preferredQuality,
+              underline: const SizedBox.shrink(),
+              onChanged: (q) {
+                if (q != null) settings.preferredQuality = q;
+              },
+              items: [
+                for (final q in AudioQuality.values)
+                  DropdownMenuItem(value: q, child: Text(q.label)),
+              ],
+            ),
+          ),
+          const _Header('歌词'),
+          ListTile(
+            leading: const Icon(Icons.lyrics_outlined),
+            title: const Text('默认歌词来源'),
+            subtitle: const Text('没有歌词时自动尝试另一个来源'),
+            trailing: SegmentedButton<LyricSource>(
+              segments: [
+                for (final s in LyricSource.values) ButtonSegment(value: s, label: Text(s.label)),
+              ],
+              selected: {settings.lyricSource},
+              showSelectedIcon: false,
+              onSelectionChanged: (v) => settings.lyricSource = v.first,
+            ),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.translate_rounded),
+            title: const Text('显示翻译'),
+            value: settings.showTranslation,
+            onChanged: (v) => settings.showTranslation = v,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.abc_rounded),
+            title: const Text('显示罗马音'),
+            value: settings.showRomaji,
+            onChanged: (v) => settings.showRomaji = v,
+          ),
+          const _Header('关于'),
+          const ListTile(
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text(AppInfo.name),
+            subtitle: Text('版本 ${AppInfo.version} · 第三方客户端，与网易云音乐官方无关'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Text(
+        title,
+        style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}

@@ -1,22 +1,33 @@
 import 'package:flutter/material.dart';
 
 import '../data/format.dart';
-import '../data/mock_data.dart';
 import '../data/models.dart';
-import '../state/player_controller.dart';
+import '../shell/destinations.dart';
+import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cover_art.dart';
+import '../widgets/dev_badge.dart';
 import '../widgets/hover_builder.dart';
 import '../widgets/round_icon_button.dart';
+import 'library/playlist_page.dart';
+import 'login_page.dart';
 
-/// 为我推荐。
+const _dailyPalette = [Color(0xFF3B2A4D), Color(0xFFB0605A), Color(0xFFE8B66B)];
+const _likedPalette = [Color(0xFFE85A9A), Color(0xFF6A4BC4), Color(0xFF1F1A3A)];
+const _fmPalette = [Color(0xFF1B1036), Color(0xFFE0367F), Color(0xFF29D3F0)];
+
+/// 首页。推荐类功能（每日推荐、私人 FM、推荐歌单）待开发，先放我的歌单。
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, required this.onNavigate});
+
+  final ValueChanged<Destination> onNavigate;
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final hPad = width < 600 ? 16.0 : 24.0;
+    final account = AccountScope.of(context);
+    final playlists = account.playlists;
 
     return Scrollbar(
       child: CustomScrollView(
@@ -29,54 +40,64 @@ class HomePage extends StatelessWidget {
                 const SizedBox(height: 24),
                 LayoutBuilder(
                   builder: (context, c) {
-                    const shortcuts = Column(
+                    final shortcuts = Column(
                       children: [
                         _ShortcutCard(
                           title: '每日推荐',
                           subtitle: '根据你的音乐口味 · 每日更新',
                           icon: Icons.calendar_today_rounded,
-                          palette: MockData.dailyPalette,
+                          palette: _dailyPalette,
                           seed: 'daily',
+                          ready: false,
+                          onTap: () => showNotReady('每日推荐'),
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         _ShortcutCard(
                           title: '我喜欢的音乐',
-                          subtitle: '发现你独特的音乐品味',
+                          subtitle: account.isLoggedIn
+                              ? '${account.likedPlaylist?.trackCount ?? 0} 首'
+                              : '登录后查看',
                           icon: Icons.favorite_rounded,
-                          palette: MockData.likedPalette,
+                          palette: _likedPalette,
                           seed: 'liked',
+                          onTap: () => onNavigate(Destination.liked),
                         ),
                       ],
                     );
                     if (c.maxWidth < 760) {
                       return Column(
-                        children: [
-                          shortcuts,
-                          const SizedBox(height: 16),
-                          _PersonalFmCard(width: c.maxWidth),
-                        ],
+                        children: [shortcuts, const SizedBox(height: 16), const _PersonalFmCard()],
                       );
                     }
                     return IntrinsicHeight(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Expanded(child: shortcuts),
+                          Expanded(child: shortcuts),
                           const SizedBox(width: 20),
-                          Expanded(child: _PersonalFmCard(width: (c.maxWidth - 20) / 2)),
+                          const Expanded(child: _PersonalFmCard()),
                         ],
                       ),
                     );
                   },
                 ),
                 const SizedBox(height: 32),
-                const _SectionTitle('专属歌单'),
+                const _SectionTitle('我的歌单'),
                 const SizedBox(height: 16),
+                if (!account.isLoggedIn)
+                  const SizedBox(height: 220, child: LoginPrompt(message: '登录后查看你的歌单'))
+                else if (playlists.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                      child: Text('还没有歌单', style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                  ),
               ],
             ),
           ),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32),
+            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 0),
             sliver: SliverLayoutBuilder(
               builder: (context, c) {
                 // 按宽度算列数和格子高度：封面正方形 + 间距 + 两行标题，避免固定宽高比导致溢出。
@@ -94,10 +115,23 @@ class HomePage extends StatelessWidget {
                     crossAxisSpacing: spacing,
                     mainAxisExtent: cell + titleHeight,
                   ),
-                  itemCount: MockData.recommended.length,
-                  itemBuilder: (context, i) => _PlaylistCard(playlist: MockData.recommended[i]),
+                  itemCount: playlists.length,
+                  itemBuilder: (context, i) => _PlaylistCard(playlist: playlists[i]),
                 );
               },
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 32),
+            sliver: const SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SectionTitle('推荐歌单', ready: false),
+                  SizedBox(height: 8),
+                  Text('个性化推荐还在开发中', style: TextStyle(color: AppColors.textSecondary)),
+                ],
+              ),
             ),
           ),
         ],
@@ -114,10 +148,10 @@ class _Greeting extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '${greetingFor(DateTime.now())}，${MockData.userName}',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
+        Text(switch (AccountScope.of(context).profile) {
+          final p? => '${greetingFor(DateTime.now())}，${p.nickname}',
+          null => greetingFor(DateTime.now()),
+        }, style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 6),
         const Text('由此开启好心情 ~', style: TextStyle(color: AppColors.textSecondary)),
       ],
@@ -126,9 +160,10 @@ class _Greeting extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
+  const _SectionTitle(this.title, {this.ready = true});
 
   final String title;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +179,7 @@ class _SectionTitle extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(title, style: Theme.of(context).textTheme.titleLarge),
+        if (!ready) ...[const SizedBox(width: 10), const DevBadge()],
       ],
     );
   }
@@ -182,6 +218,8 @@ class _ShortcutCard extends StatelessWidget {
     required this.icon,
     required this.palette,
     required this.seed,
+    required this.onTap,
+    this.ready = true,
   });
 
   final String title;
@@ -189,11 +227,13 @@ class _ShortcutCard extends StatelessWidget {
   final IconData icon;
   final List<Color> palette;
   final String seed;
+  final VoidCallback onTap;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
     return _Panel(
-      onTap: () {},
+      onTap: onTap,
       child: Row(
         children: [
           SizedBox(
@@ -210,6 +250,7 @@ class _ShortcutCard extends StatelessWidget {
                     Icon(icon, size: 20, color: AppColors.accent),
                     const SizedBox(width: 8),
                     Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    if (!ready) ...[const SizedBox(width: 8), const DevBadge()],
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -230,111 +271,45 @@ class _ShortcutCard extends StatelessWidget {
 }
 
 class _PersonalFmCard extends StatelessWidget {
-  const _PersonalFmCard({required this.width});
-
-  /// 卡片可用宽度。由外层算好传进来，这样卡片本身仍支持 IntrinsicHeight。
-  final double width;
+  const _PersonalFmCard();
 
   @override
   Widget build(BuildContext context) {
-    // 窄时封面缩小、去掉"私人FM"标签，保证控制按钮放得下。
-    final inner = width - 42;
-    final cover = (inner * 0.4).clamp(96.0, 176.0);
-    final showLabel = inner > 460;
-    return _buildCard(context, cover, showLabel);
-  }
-
-  Widget _buildCard(BuildContext context, double cover, bool showLabel) {
-    final player = PlayerScope.of(context);
-    final song = player.song;
-
-    Widget meta(IconData icon, String text) => Padding(
-      padding: const EdgeInsets.only(top: 6),
+    return _Panel(
+      padding: const EdgeInsets.all(20),
+      onTap: () => showNotReady('私人 FM'),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.textMuted),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          const SizedBox(
+            width: 96,
+            child: CoverArt(
+              palette: _fmPalette,
+              seed: 'fm',
+              radius: AppRadius.card,
+              icon: Icons.radio_rounded,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('私人 FM', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(width: 10),
+                    const DevBadge(),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '根据你的口味连续播放',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ],
             ),
           ),
         ],
-      ),
-    );
-
-    return _Panel(
-      padding: const EdgeInsets.all(20),
-      child: SizedBox(
-        height: cover,
-        child: Row(
-          children: [
-            SizedBox.square(
-              dimension: cover,
-              child: CoverArt(
-                palette: song.palette,
-                seed: song.id,
-                radius: AppRadius.card,
-                shadow: AppShadows.medium,
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    song.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  meta(Icons.person_rounded, song.artist),
-                  meta(Icons.album_rounded, song.album),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      RoundIconButton(
-                        icon: Icons.thumb_down_alt_rounded,
-                        onPressed: player.next,
-                        tooltip: '不喜欢',
-                      ),
-                      const SizedBox(width: 8),
-                      RoundIconButton(
-                        icon: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        onPressed: player.toggle,
-                        tooltip: player.isPlaying ? '暂停' : '播放',
-                        size: 48,
-                        iconSize: 28,
-                        filled: true,
-                        color: AppColors.accent,
-                      ),
-                      const SizedBox(width: 8),
-                      RoundIconButton(
-                        icon: Icons.skip_next_rounded,
-                        onPressed: player.next,
-                        tooltip: '下一首',
-                        iconSize: 24,
-                      ),
-                      if (showLabel) ...[
-                        const Spacer(),
-                        const Icon(Icons.radio_rounded, size: 16, color: AppColors.textMuted),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '私人FM',
-                          style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -347,8 +322,11 @@ class _PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    void open() =>
+        Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => PlaylistPage(playlist: playlist)));
     return HoverBuilder(
-      onTap: () {},
+      onTap: open,
       builder: (context, hovered) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -360,6 +338,7 @@ class _PlaylistCard extends StatelessWidget {
                 CoverArt(
                   palette: playlist.palette,
                   seed: playlist.id,
+                  imageUrl: playlist.coverUrl,
                   radius: AppRadius.panel,
                   shadow: hovered ? AppShadows.heavy : null,
                 ),
@@ -398,7 +377,7 @@ class _PlaylistCard extends StatelessWidget {
                     duration: const Duration(milliseconds: 150),
                     child: RoundIconButton(
                       icon: Icons.play_arrow_rounded,
-                      onPressed: hovered ? () {} : null,
+                      onPressed: hovered ? open : null,
                       size: 44,
                       iconSize: 26,
                       filled: true,

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../shell/destinations.dart';
 import '../theme/app_theme.dart';
 
-/// 还没画的页面。
+/// 还没做的页面。
 class PlaceholderPage extends StatelessWidget {
   const PlaceholderPage({super.key, required this.destination});
 
@@ -19,7 +19,7 @@ class PlaceholderPage extends StatelessWidget {
           const SizedBox(height: 16),
           Text(destination.label, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 6),
-          const Text('施工中…', style: TextStyle(color: AppColors.textSecondary)),
+          const Text('待开发', style: TextStyle(color: AppColors.textSecondary)),
         ],
       ),
     );

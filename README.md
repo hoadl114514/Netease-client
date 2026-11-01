@@ -3,7 +3,9 @@
 一个基于flutter开发的网易云音乐第三方客户端
 小项目，不喜勿喷，有问题欢迎在issue指出
 
-> 当前阶段：纯前端预览，全部数据为假数据，尚未接入任何 API 和音频播放。目前只做手机端（Android + iOS）。
+> 当前阶段：alpha。已接入网易云接口和真实播放；推荐类功能（每日推荐、私人 FM、推荐歌单等）待开发。目前只做手机端（Android + iOS）。
+>
+> 第三方客户端，与网易云音乐官方无关。
 
 | 首页 | 抽屉侧栏 | 播放页 | 播放页下滑 | 全屏歌词 |
 | --- | --- | --- | --- | --- |
@@ -18,8 +20,17 @@ flutter pub get
 flutter run              # 连接 Android / iOS 设备或模拟器
 ```
 
-预览启动后会自动"播放"一首假歌。点左上角头像打开抽屉侧栏，点底部迷你播放条进入播放页，点歌词按钮直接打开全屏歌词。
-`web/` 目录只用于在浏览器里快速预览，不是发布目标。
+`web/` 目录只用于在浏览器里快速预览界面，不是发布目标（QQ 歌词解密依赖 64 位整数，Web 上不可用）。
+
+## 已实现
+
+- **登录**：只支持 Cookie（设置 → Cookie 登录，或点抽屉里的头像）。需要包含 `MUSIC_U`，只保存在本机。未登录也能搜索、播放免费歌曲的标准音质。
+- **搜索**：顶栏搜索单曲，滚到底自动翻页。
+- **歌单**：首页「我的歌单」、底部「我喜欢」；点歌开始播放整张歌单。
+- **播放**：just_audio；上一首 / 下一首、随机、单曲循环、播放队列、拖动进度。无版权的歌自动跳过；只能试听时提示，歌词时间自动换算。
+- **音质**：只显示当前歌曲实际提供的档位（标准 → 超清母带共 9 档，来自 `song/music/detail/get`）。选中的档位同时设为默认；歌曲没有该档时自动选它有的最高档，账号权益不足时服务端降级并提示。
+- **歌词**：两个来源，网易云（YRC 逐字 / LRC 逐行）和 QQ 音乐（QRC 逐字，客户端解密）。都带翻译和罗马音（有就显示，可开关）。默认来源取不到时自动换另一个；播放页「更多」里可以手动切换来源、调整歌词偏移。QQ 歌词按标题、歌手、时长、版本（Live / 伴奏 / Remix…）保守匹配，拿不准就不用。
+- **喜欢**：红心同步到网易云账号。
 
 ## 设计
 
@@ -32,18 +43,26 @@ flutter run              # 连接 Android / iOS 设备或模拟器
 
 ```
 lib/
-  app/        应用入口、显示名
+  app/        应用入口、显示名、服务装配（AppServices）
+  api/        网易云接口（EAPI 加解密、Cookie）
+  audio/      播放内核接口 + just_audio 实现
+  lyrics/     歌词解析（LRC / YRC / QRC）、QQ 歌词搜索匹配与解密、歌词来源调度
   theme/      颜色、圆角、阴影、ThemeData
-  data/       模型、格式化工具、假数据（mock_data.dart 接 API 后删除）
-  state/      PlayerController（假播放器，接口按真实播放器设计）
+  data/       模型、格式化工具
+  state/      播放器、账号、本地设置
   shell/      主框架：顶栏、抽屉侧栏、迷你播放条、底部导航
-  pages/      首页、播放页、全屏歌词
-  widgets/    通用组件（占位封面、主色提取、悬停、圆形按钮）
+  pages/      首页、搜索、歌单、登录、设置、播放页、全屏歌词
+  widgets/    通用组件（封面、主色提取、歌曲行、红心、待开发标签）
 ```
 
 ## 检查
 
 ```bash
 flutter analyze
-flutter test
+flutter test        # 全部离线，不访问网络
 ```
+
+## 致谢
+
+- [Suxiaoqinx/Netease_url](https://github.com/Suxiaoqinx/Netease_url)（MIT）：EAPI 加密与播放地址接口的参考。
+- [WXRIW/Lyricify-Lyrics-Helper](https://github.com/WXRIW/Lyricify-Lyrics-Helper)（Apache-2.0）：QQ 音乐歌词接口与 QRC 解密算法。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
