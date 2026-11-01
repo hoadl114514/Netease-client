@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netease_client/app/app.dart';
 import 'package:netease_client/data/models.dart';
-import 'package:netease_client/pages/now_playing/lyrics_page.dart';
+import 'package:netease_client/pages/now_playing/now_playing_page.dart';
 
 import 'support/fakes.dart';
 
@@ -72,7 +72,7 @@ void main() {
     await pumpApp(tester);
     await tester.tap(find.text('歌曲1').last);
     await settle(tester);
-    expect(find.text('正在播放'), findsOneWidget);
+    expect(find.byType(NowPlayingPage), findsOneWidget);
     expect(find.text('测试歌单'), findsOneWidget);
 
     await tester.tap(find.text('极高')); // 默认 exhigh。
@@ -84,14 +84,22 @@ void main() {
 
     await tester.tap(find.text('无损'));
     await settle(tester);
-    expect(find.text('SQ'), findsOneWidget); // 歌手名前的音质徽章。
+    expect(find.text('无损'), findsOneWidget); // 进度条下方的音质标签。
   });
 
   testWidgets('lyrics page shows lyrics; menu switches source and offset', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.byTooltip('歌词'));
     await settle(tester);
-    expect(find.byType(LyricsPage), findsOneWidget);
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+    expect(find.text('第0行翻译'), findsOneWidget);
+
+    // 播放页里切回封面再切回歌词。
+    await tester.tap(find.byTooltip('关闭歌词'));
+    await settle(tester);
+    expect(find.text('第0行翻译'), findsNothing);
+    await tester.tap(find.byTooltip('歌词'));
+    await settle(tester);
     expect(find.text('第0行翻译'), findsOneWidget);
 
     await tester.tap(find.byTooltip('更多'));
