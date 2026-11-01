@@ -252,7 +252,7 @@ class _LyricsPane extends StatelessWidget {
             // 上下边缘淡出。
             shaderCallback: _fadeEdges,
             blendMode: BlendMode.dstIn,
-            child: LyricsView(fontSize: 28, anchor: 0.25, blur: true),
+            child: LyricsView(fontSize: 28, anchor: 0.25, depth: true),
           ),
         ),
       ],

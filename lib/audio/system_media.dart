@@ -27,6 +27,8 @@ class SystemMediaBridge extends BaseAudioHandler with SeekHandler {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'io.github.hoadl114514.netease_client.playback',
       androidNotificationChannelName: '音乐播放',
+      // 白色单色小图标。按名字查找，android/app/src/main/res/raw/keep.xml 里保留了它。
+      androidNotificationIcon: 'drawable/ic_stat_music',
       // 暂停时也保持前台服务：Android 12+ 不允许应用从后台重新拉起前台服务，
       // 否则暂停后用耳机 / 蓝牙恢复播放会失败。通知里有「停止」按钮可以关掉。
       androidStopForegroundOnPause: false,
