@@ -77,15 +77,27 @@ class HomePage extends StatelessWidget {
           ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32),
-            sliver: SliverGrid.builder(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 210,
-                mainAxisSpacing: 20,
-                crossAxisSpacing: 20,
-                childAspectRatio: 0.8,
-              ),
-              itemCount: MockData.recommended.length,
-              itemBuilder: (context, i) => _PlaylistCard(playlist: MockData.recommended[i]),
+            sliver: SliverLayoutBuilder(
+              builder: (context, c) {
+                // 按宽度算列数和格子高度：封面正方形 + 间距 + 两行标题，避免固定宽高比导致溢出。
+                const spacing = 16.0;
+                const titleHeight = 10 + 14 * 1.4 * 2 + 4;
+                final columns = ((c.crossAxisExtent + spacing) / (180 + spacing)).floor().clamp(
+                  2,
+                  6,
+                );
+                final cell = (c.crossAxisExtent - spacing * (columns - 1)) / columns;
+                return SliverGrid.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: spacing,
+                    crossAxisSpacing: spacing,
+                    mainAxisExtent: cell + titleHeight,
+                  ),
+                  itemCount: MockData.recommended.length,
+                  itemBuilder: (context, i) => _PlaylistCard(playlist: MockData.recommended[i]),
+                );
+              },
             ),
           ),
         ],

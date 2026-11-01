@@ -13,37 +13,48 @@ void main() {
   }
 
   // 播放页背景是无限循环动画，不能用 pumpAndSettle。
-  Future<void> settleRoute(WidgetTester tester) async {
+  Future<void> settle(WidgetTester tester) async {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
   }
 
-  testWidgets('desktop: home renders, lyrics opens split now-playing, collapses back', (
-    tester,
-  ) async {
-    await pumpAt(tester, const Size(1600, 1000));
-    expect(find.text('专属歌单'), findsOneWidget);
-    expect(find.text('为我推荐'), findsOneWidget);
+  const phone = Size(400, 860);
 
-    await tester.tap(find.byTooltip('歌词'));
-    await settleRoute(tester);
-    // 宽屏分栏：歌词工具栏和封面信息同时可见。
-    expect(find.byTooltip('复制当前歌词'), findsOneWidget);
-    expect(find.byTooltip('随机播放'), findsOneWidget);
+  testWidgets('home renders with bottom navigation', (tester) async {
+    await pumpAt(tester, phone);
+    expect(find.text('专属歌单'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
+
+  testWidgets('avatar opens drawer; drawer item navigates and closes it', (tester) async {
+    await pumpAt(tester, phone);
+    await tester.tap(find.byTooltip('个人中心'));
+    await settle(tester);
+    expect(find.text('查看个人资料'), findsOneWidget);
+    expect(find.text('听歌排行'), findsOneWidget);
+
+    await tester.tap(find.text('最近播放'));
+    await settle(tester);
+    expect(find.text('查看个人资料'), findsNothing);
+    expect(find.text('施工中…'), findsOneWidget);
+  });
+
+  testWidgets('mini player opens now-playing pages and collapses back', (tester) async {
+    await pumpAt(tester, phone);
+    await tester.tap(find.text(MockData.current.title).last);
+    await settle(tester);
+    expect(find.byType(PageView), findsOneWidget);
 
     await tester.tap(find.byTooltip('收起'));
-    await settleRoute(tester);
+    await settle(tester);
     expect(find.byTooltip('收起'), findsNothing);
   });
 
-  testWidgets('compact: bottom navigation, tapping mini player opens now-playing', (tester) async {
-    await pumpAt(tester, const Size(400, 860));
-    expect(find.byType(NavigationBar), findsOneWidget);
-
-    await tester.tap(find.text(MockData.current.title).last);
-    await settleRoute(tester);
-    expect(find.byTooltip('收起'), findsOneWidget);
-    expect(find.byType(PageView), findsOneWidget);
+  testWidgets('lyrics button opens lyrics page directly', (tester) async {
+    await pumpAt(tester, phone);
+    await tester.tap(find.byTooltip('歌词'));
+    await settle(tester);
+    expect(find.byTooltip('复制当前歌词'), findsOneWidget);
   });
 }

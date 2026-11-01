@@ -1,25 +1,28 @@
 import 'package:flutter/material.dart';
 
-/// 侧边栏的固定入口。
+/// 应用内的固定入口。
 enum Destination {
-  forYou('为我推荐', Icons.home_rounded),
-  discover('发现音乐', Icons.library_music_rounded),
-  roaming('私人漫游', Icons.radio_rounded),
-  podcast('播客电台', Icons.podcasts_rounded),
-  liked('我喜欢的音乐', Icons.favorite_rounded),
-  collection('我的收藏', Icons.star_rounded),
-  cloud('我的云盘', Icons.cloud_rounded),
-  local('本地歌曲', Icons.folder_rounded),
-  recent('最近播放', Icons.history_rounded);
+  forYou('为我推荐', '首页', Icons.home_rounded),
+  discover('发现音乐', '发现', Icons.explore_rounded),
+  podcast('播客电台', '播客', Icons.podcasts_rounded),
+  liked('我喜欢的音乐', '我喜欢', Icons.favorite_rounded),
+  recent('最近播放', '最近', Icons.history_rounded),
+  ranking('听歌排行', '排行', Icons.show_chart_rounded),
+  updates('我的动态', '动态', Icons.campaign_outlined),
+  settings('设置', '设置', Icons.settings_outlined);
 
-  const Destination(this.label, this.icon);
+  const Destination(this.label, this.shortLabel, this.icon);
 
+  /// 页面标题。
   final String label;
+
+  /// 底部导航用的短名。
+  final String shortLabel;
   final IconData icon;
 
-  static const primary = [forYou, discover, roaming, podcast];
-  static const library = [liked, collection, cloud, local, recent];
+  /// 底部导航。
+  static const tabs = [forYou, discover, podcast, liked];
 
-  /// 窄屏底部导航只放这几个。
-  static const mobile = [forYou, discover, liked, recent];
+  /// 抽屉侧栏里的菜单。
+  static const drawer = [ranking, recent, updates, settings];
 }
