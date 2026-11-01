@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netease_client/app/app.dart';
 import 'package:netease_client/data/mock_data.dart';
+import 'package:netease_client/pages/now_playing/lyrics_page.dart';
 
 void main() {
   Future<void> pumpAt(WidgetTester tester, Size size) async {
@@ -44,8 +45,21 @@ void main() {
     await pumpAt(tester, phone);
     await tester.tap(find.text(MockData.current.title).last);
     await settle(tester);
-    expect(find.byType(PageView), findsOneWidget);
+    expect(find.text('正在播放'), findsOneWidget);
 
+    // 往下滑露出歌词预览卡片，点进全屏歌词。
+    await tester.drag(find.text('正在播放'), const Offset(0, -700));
+    await settle(tester);
+    expect(find.text('歌词预览'), findsOneWidget);
+    await tester.tap(find.byTooltip('全屏歌词'));
+    await settle(tester);
+    expect(find.byType(LyricsPage), findsOneWidget);
+    await tester.tap(find.byTooltip('收起').last);
+    await settle(tester);
+    expect(find.byType(LyricsPage), findsNothing);
+
+    await tester.drag(find.text('歌词预览'), const Offset(0, 900));
+    await settle(tester);
     await tester.tap(find.byTooltip('收起'));
     await settle(tester);
     expect(find.byTooltip('收起'), findsNothing);
@@ -55,6 +69,14 @@ void main() {
     await pumpAt(tester, phone);
     await tester.tap(find.byTooltip('歌词'));
     await settle(tester);
-    expect(find.byTooltip('复制当前歌词'), findsOneWidget);
+    expect(find.byType(LyricsPage), findsOneWidget);
+
+    // 「更多」里有歌词偏移调整。
+    await tester.tap(find.byTooltip('更多'));
+    await settle(tester);
+    expect(find.text('歌词偏移'), findsOneWidget);
+    await tester.tap(find.byTooltip('歌词提前 0.5s'));
+    await tester.pump();
+    expect(find.text('+0.5s'), findsOneWidget);
   });
 }
