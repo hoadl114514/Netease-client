@@ -56,6 +56,10 @@ class HomePage extends StatelessWidget {
                           seed: 'liked',
                           // 「我喜欢」歌单的封面就是最近喜欢的第一首歌的封面。
                           imageUrl: account.likedPlaylist?.coverUrl,
+                          fallbackImage: switch (account.likedPlaylist) {
+                            final p? => playlistCoverFallback(context, p),
+                            null => null,
+                          },
                           onTap: () => onNavigate(Destination.liked),
                         ),
                       ],
@@ -229,6 +233,7 @@ class _ShortcutCard extends StatelessWidget {
     required this.seed,
     required this.onTap,
     this.imageUrl,
+    this.fallbackImage,
   });
 
   final String title;
@@ -240,6 +245,7 @@ class _ShortcutCard extends StatelessWidget {
 
   /// 卡片封面；为 null 时用 [palette] 生成的占位图。
   final String? imageUrl;
+  final Future<String?> Function()? fallbackImage;
 
   @override
   Widget build(BuildContext context) {
@@ -253,6 +259,7 @@ class _ShortcutCard extends StatelessWidget {
               palette: palette,
               seed: seed,
               imageUrl: imageUrl,
+              fallbackImage: fallbackImage,
               radius: AppRadius.card,
             ),
           ),

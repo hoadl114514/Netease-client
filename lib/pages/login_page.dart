@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api/netease_api.dart';
@@ -9,7 +8,7 @@ import '../app/app.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 
-/// 登录：扫码、手机号验证码、Cookie 三种方式。
+/// 登录：扫码、Cookie 两种方式。
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 
@@ -19,19 +18,18 @@ class LoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('登录网易云账号'),
           bottom: const TabBar(
             tabs: [
               Tab(text: '扫码'),
-              Tab(text: '手机号'),
               Tab(text: 'Cookie'),
             ],
           ),
         ),
-        body: const TabBarView(children: [_QrLogin(), _PhoneLogin(), _CookieLogin()]),
+        body: const TabBarView(children: [_QrLogin(), _CookieLogin()]),
       ),
     );
   }
@@ -195,157 +193,6 @@ class _QrLoginState extends State<_QrLogin> with AutomaticKeepAliveClientMixin {
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('刷新二维码'),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------- 手机号
-
-class _PhoneLogin extends StatefulWidget {
-  const _PhoneLogin();
-
-  @override
-  State<_PhoneLogin> createState() => _PhoneLoginState();
-}
-
-class _PhoneLoginState extends State<_PhoneLogin> with AutomaticKeepAliveClientMixin {
-  static const _cooldown = 60;
-
-  final _phone = TextEditingController();
-  final _captcha = TextEditingController();
-  Timer? _timer;
-  int _wait = 0;
-  bool _sending = false;
-  bool _busy = false;
-  String? _error;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _phone.dispose();
-    _captcha.dispose();
-    super.dispose();
-  }
-
-  /// 只支持中国大陆手机号（+86）。
-  bool get _phoneValid => RegExp(r'^1\d{10}$').hasMatch(_phone.text.trim());
-
-  Future<void> _send() async {
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
-    try {
-      await AppScope.of(context).api.sendCaptcha(_phone.text.trim());
-      if (!mounted) return;
-      AppScope.toast('验证码已发送');
-      setState(() => _wait = _cooldown);
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted) return t.cancel();
-        setState(() => _wait--);
-        if (_wait <= 0) t.cancel();
-      });
-    } catch (e) {
-      if (mounted) setState(() => _error = _message(e));
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _login() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final cookies = await AppScope.of(context).api
-          .loginWithCaptcha(_phone.text.trim(), _captcha.text.trim());
-      if (!mounted) return;
-      await _finish(context, cookies);
-    } catch (e) {
-      if (mounted) setState(() => _error = _message(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final canSend = _phoneValid && !_sending && _wait <= 0;
-    final canLogin = _phoneValid && _captcha.text.trim().length >= 4 && !_busy;
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        TextField(
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(11),
-          ],
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: '手机号',
-            prefixText: '+86  ',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _captcha,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => canLogin ? _login() : null,
-                decoration: const InputDecoration(labelText: '验证码', border: OutlineInputBorder()),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              height: 56,
-              child: OutlinedButton(
-                onPressed: canSend ? _send : null,
-                child: Text(_wait > 0 ? '${_wait}s 后重发' : '获取验证码'),
-              ),
-            ),
-          ],
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-        ],
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: canLogin ? _login : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.onAccent,
-            minimumSize: const Size.fromHeight(48),
-          ),
-          child: _busy
-              ? const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('登录'),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          '网易云对异常网络环境有风控，如果提示「网络环境存在风险」，换成扫码或 Cookie 登录。',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.5),
         ),
       ],
     );

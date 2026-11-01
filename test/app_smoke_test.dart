@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netease_client/app/app.dart';
 import 'package:netease_client/data/models.dart';
+import 'package:netease_client/pages/comments/comments_page.dart';
+import 'package:netease_client/pages/now_playing/lyrics_copy.dart';
 import 'package:netease_client/pages/now_playing/now_playing_page.dart';
 
 import 'support/fakes.dart';
@@ -70,9 +72,7 @@ void main() {
     await settle(tester);
     // 默认是扫码；假接口没给 key，显示错误而不是一直转圈。
     expect(find.text('获取二维码失败'), findsOneWidget);
-    await tester.tap(find.text('手机号'));
-    await settle(tester);
-    expect(find.text('获取验证码'), findsOneWidget);
+    expect(find.text('手机号'), findsNothing);
     await tester.tap(find.text('Cookie'));
     await settle(tester);
     expect(find.text('验证并登录'), findsOneWidget);
@@ -124,5 +124,53 @@ void main() {
     await tester.tap(find.text('QQ 音乐').last);
     await settle(tester);
     expect(find.text('QQ 音乐没有这首歌的歌词'), findsOneWidget);
+  });
+
+  testWidgets('long-press a lyric line to copy it or batch-select lines', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.byTooltip('歌词'));
+    await settle(tester);
+    await tester.longPress(find.text('第1行翻译'));
+    await settle(tester);
+    expect(find.text('复制这句'), findsOneWidget);
+    await tester.tap(find.text('批量复制'));
+    await settle(tester);
+    expect(find.byType(LyricsCopyPage), findsOneWidget);
+    expect(find.text('已选 1 句'), findsOneWidget);
+    // 长按另一行：把两行之间全部选上。
+    await tester.longPress(find.text('第4行翻译'));
+    await tester.pump();
+    expect(find.text('已选 4 句'), findsOneWidget);
+    await tester.tap(find.text('全选'));
+    await tester.pump();
+    expect(find.text('已选 8 句'), findsOneWidget);
+    expect(
+      lyricsText(karaoke().lines.take(2), translation: true),
+      '字0字1字2字3\n第0行翻译\n字0字1字2字3\n第1行翻译',
+    );
+  });
+
+  testWidgets('long-press song title offers copying title or artist', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('歌曲1').last);
+    await settle(tester);
+    await tester.longPress(find.text('歌手1').last);
+    await settle(tester);
+    expect(find.text('复制歌名'), findsOneWidget);
+    expect(find.text('复制歌手'), findsOneWidget);
+    expect(find.text('复制歌名 - 歌手'), findsOneWidget);
+  });
+
+  testWidgets('now playing opens the song comments', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('歌曲1').last);
+    await settle(tester);
+    await tester.tap(find.byTooltip('评论'));
+    await settle(tester);
+    expect(find.byType(CommentsPage), findsOneWidget);
+    expect(find.text('热门'), findsOneWidget);
+    expect(find.text('最新'), findsOneWidget);
+    expect(find.text('还没有评论，来抢沙发吧 ~'), findsOneWidget);
+    expect(find.text('说点什么吧'), findsOneWidget);
   });
 }

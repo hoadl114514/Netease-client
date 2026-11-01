@@ -75,7 +75,7 @@ class AccountController extends ChangeNotifier {
   /// 用一段 Cookie 文本登录，成功返回账号，失败抛 [ApiException]。
   Future<UserProfile> login(String cookieText) => loginWithCookies(parseCookie(cookieText));
 
-  /// 用 Cookie 键值登录（扫码、手机号登录拿到的 Cookie 也走这里）：先验证账号，成功才保存。
+  /// 用 Cookie 键值登录（扫码登录拿到的 Cookie 也走这里）：先验证账号，成功才保存。
   Future<UserProfile> loginWithCookies(Map<String, String> cookies) async {
     if (!cookies.containsKey('MUSIC_U')) {
       throw const ApiException('Cookie 里没有 MUSIC_U，请确认复制完整');

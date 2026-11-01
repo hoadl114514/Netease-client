@@ -15,6 +15,9 @@ abstract class PlaybackBackend {
   Future<List<QualityInfo>> qualities(String songId);
   Future<SongUrl?> songUrl(String songId, AudioQuality quality);
   Future<Lyrics> lyrics(Song song, LyricSource source, {required bool fallback});
+
+  /// 上报一次播放（同步到网易云的最近播放）。未登录时什么都不做。
+  Future<void> scrobble(Song song, {required Duration listened, String? sourceId});
 }
 
 class NeteaseBackend implements PlaybackBackend {
@@ -32,6 +35,12 @@ class NeteaseBackend implements PlaybackBackend {
   @override
   Future<Lyrics> lyrics(Song song, LyricSource source, {required bool fallback}) =>
       _lyrics.fetch(song, source, fallback: fallback);
+
+  @override
+  Future<void> scrobble(Song song, {required Duration listened, String? sourceId}) async {
+    if (!_api.hasLoginCookie) return;
+    await _api.scrobble(song.id, seconds: listened.inSeconds, sourceId: sourceId);
+  }
 }
 
 enum Repeat { list, one }
@@ -58,6 +67,12 @@ class PlayerController extends ChangeNotifier {
 
   List<Song> _queue = const [];
   String _queueTitle = '';
+
+  /// 队列来源的歌单 / 专辑 id，上报播放时带上。
+  String? _sourceId;
+
+  /// 当前这首实际听了多久（拖动进度不算），换歌时用来判断要不要上报。
+  Duration _listened = Duration.zero;
   int _index = -1;
   int _token = 0;
 
@@ -172,14 +187,17 @@ class PlayerController extends ChangeNotifier {
 
   // ---------------------------------------------------------------- 队列
 
-  /// 替换队列并从 [start] 开始播放。
-  Future<void> playQueue(List<Song> songs, {int start = 0, String title = ''}) {
+  /// 替换队列并从 [start] 开始播放。[sourceId] 是来源歌单 / 专辑的 id。
+  Future<void> playQueue(List<Song> songs, {int start = 0, String title = '', String? sourceId}) {
     if (songs.isEmpty) return Future.value();
+    _reportListened();
     _extend = null;
     _queue = List.unmodifiable(songs);
     _queueTitle = title;
+    _sourceId = sourceId;
     _history.clear();
     _failStreak = 0;
+    _index = -1; // 新队列同一位置可能是另一首歌，让 _load 视为换歌。
     return _load(start.clamp(0, songs.length - 1));
   }
 
@@ -203,6 +221,7 @@ class PlayerController extends ChangeNotifier {
     final i = _index;
     if (i == _queue.length - 1) await _extendQueue();
     if (_queue.length <= 1) return;
+    _reportListened();
     _queue = List.unmodifiable([..._queue]..removeAt(i));
     _index = -1; // 让 _load 视为换歌。
     _history.clear();
@@ -295,6 +314,8 @@ class PlayerController extends ChangeNotifier {
 
   void _onCompleted() {
     if (!_playing) return;
+    // 放完就上报，单曲循环或只有一首时不会走到换歌那一步。
+    _reportListened();
     _advance(auto: true);
   }
 
@@ -309,6 +330,7 @@ class PlayerController extends ChangeNotifier {
     final token = ++_token;
     _wantPlay = autoplay ?? true;
     final changingSong = index != _index;
+    if (changingSong) _reportListened();
     _index = index;
     final song = this.song;
     _position = startAt;
@@ -404,6 +426,24 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// 当前这首听够了（30 秒，或短歌的一半）就上报给网易云，然后清零。
+  void _reportListened() {
+    final song = current;
+    final listened = _listened;
+    _listened = Duration.zero;
+    if (song == null || !_settings.syncRecentPlays) return;
+    final half = song.duration ~/ 2;
+    final need = half > Duration.zero && half < _scrobbleAfter ? half : _scrobbleAfter;
+    if (listened < need) return;
+    unawaited(
+      _backend
+          .scrobble(song, listened: listened, sourceId: _sourceId)
+          .catchError((Object _) {}), // 上报失败不影响播放，也不打扰用户。
+    );
+  }
+
+  static const _scrobbleAfter = Duration(seconds: 30);
+
   void _fail(String message) {
     _loading = false;
     _playing = false;
@@ -488,7 +528,11 @@ class PlayerController extends ChangeNotifier {
 
   void _startTicker() {
     _timer ??= Timer.periodic(_tick, (_) {
-      _position = _engine.position;
+      final p = _engine.position;
+      // 只累计正常播放推进的时间，拖动进度造成的跳变不算。
+      final step = p - _position;
+      if (step > Duration.zero && step < const Duration(seconds: 2)) _listened += step;
+      _position = p;
       notifyListeners();
     });
   }

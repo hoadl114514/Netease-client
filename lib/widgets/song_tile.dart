@@ -4,9 +4,10 @@ import '../data/format.dart';
 import '../data/models.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
+import 'copy_sheet.dart';
 import 'cover_art.dart';
 
-/// 歌曲列表的一行。正在播放的那首标题高亮。
+/// 歌曲列表的一行。正在播放的那首标题高亮；长按选择复制歌名或歌手。
 class SongTile extends StatelessWidget {
   const SongTile({super.key, required this.song, required this.onTap, this.index, this.trailing});
 
@@ -25,6 +26,7 @@ class SongTile extends StatelessWidget {
     final titleColor = playing ? AppColors.accent : AppColors.textPrimary;
     return InkWell(
       onTap: onTap,
+      onLongPress: () => showCopySongSheet(context, song),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(

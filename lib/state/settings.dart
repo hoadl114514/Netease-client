@@ -18,6 +18,11 @@ class AppSettings extends ChangeNotifier {
   static const _kLyricSource = 'lyric_source';
   static const _kTranslation = 'show_translation';
   static const _kRomaji = 'show_romaji';
+  static const _kSearchHistory = 'search_history';
+  static const _kSyncRecent = 'sync_recent_plays';
+
+  /// 搜索历史最多保留几条。
+  static const searchHistoryLimit = 20;
 
   String get cookie => _prefs.getString(_kCookie) ?? '';
   set cookie(String v) => _set(() => _prefs.setString(_kCookie, v));
@@ -37,6 +42,27 @@ class AppSettings extends ChangeNotifier {
 
   bool get showRomaji => _prefs.getBool(_kRomaji) ?? true;
   set showRomaji(bool v) => _set(() => _prefs.setBool(_kRomaji, v));
+
+  /// 搜索历史，最近的在前。
+  List<String> get searchHistory => _prefs.getStringList(_kSearchHistory) ?? const [];
+
+  /// 记一条搜索：挪到最前面，超出上限的丢掉。
+  void addSearchHistory(String keyword) {
+    final k = keyword.trim();
+    if (k.isEmpty) return;
+    final list = [k, ...searchHistory.where((e) => e != k)].take(searchHistoryLimit).toList();
+    _set(() => _prefs.setStringList(_kSearchHistory, list));
+  }
+
+  void removeSearchHistory(String keyword) => _set(
+    () => _prefs.setStringList(_kSearchHistory, [...searchHistory.where((e) => e != keyword)]),
+  );
+
+  void clearSearchHistory() => _set(() => _prefs.remove(_kSearchHistory));
+
+  /// 登录后把听过的歌上报给网易云，同步到官方客户端的「最近播放」。
+  bool get syncRecentPlays => _prefs.getBool(_kSyncRecent) ?? true;
+  set syncRecentPlays(bool v) => _set(() => _prefs.setBool(_kSyncRecent, v));
 
   /// SharedPreferences 的 set 会先更新内存缓存再异步落盘，所以读到的值立即是新的。
   void _set(Future<bool> Function() write) {

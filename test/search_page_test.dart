@@ -54,5 +54,29 @@ void main() {
     expect(find.text('单曲'), findsOneWidget);
     expect(find.text('专辑'), findsOneWidget);
     expect(find.widgetWithText(TextField, '晴天娃娃'), findsOneWidget);
+    expect(f.services.settings.searchHistory, ['晴天娃娃']);
+
+    // 清空输入框：搜索历史显示在热搜上面，点一下直接搜，叉掉可以删除。
+    await tester.tap(find.byTooltip('清空'));
+    await tester.pumpAndSettle();
+    expect(find.text('搜索历史'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '晴天娃娃'), findsOneWidget);
+    await tester.tap(find.byTooltip('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('搜索历史'), findsNothing);
+    expect(f.services.settings.searchHistory, isEmpty);
+  });
+
+  test('search history keeps newest first, dedupes and caps', () async {
+    final settings = await testSettings();
+    for (var i = 0; i < 25; i++) {
+      settings.addSearchHistory('词$i');
+    }
+    settings.addSearchHistory('词20');
+    expect(settings.searchHistory.first, '词20');
+    expect(settings.searchHistory, hasLength(20));
+    expect(settings.searchHistory.where((e) => e == '词20'), hasLength(1));
+    settings.clearSearchHistory();
+    expect(settings.searchHistory, isEmpty);
   });
 }

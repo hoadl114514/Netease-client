@@ -216,4 +216,62 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 80));
     expect(engine.playing, isTrue);
   });
+
+  group('sync recent plays', () {
+    Future<void> listen(WidgetTester tester, int seconds) async {
+      for (var i = 0; i < seconds; i++) {
+        engine.advance(const Duration(seconds: 1));
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+    }
+
+    testWidgets('reports a song listened past 30s when moving on', (tester) async {
+      await player.playQueue(queue, title: '歌单', sourceId: 'pl1');
+      await listen(tester, 31);
+      await player.next();
+      expect(backend.scrobbles, hasLength(1));
+      expect(backend.scrobbles.single.id, '1');
+      expect(backend.scrobbles.single.sourceId, 'pl1');
+      expect(backend.scrobbles.single.listened, greaterThanOrEqualTo(const Duration(seconds: 30)));
+
+      // 只听了几秒就切走：不上报。
+      await listen(tester, 5);
+      await player.next();
+      expect(backend.scrobbles, hasLength(1));
+      await player.pause();
+    });
+
+    testWidgets('seeking does not count as listening', (tester) async {
+      await player.playQueue(queue);
+      await listen(tester, 3);
+      await player.seek(const Duration(seconds: 150));
+      engine.advance(const Duration(seconds: 147));
+      await tester.pump(const Duration(milliseconds: 60));
+      await player.next();
+      expect(backend.scrobbles, isEmpty);
+      await player.pause();
+    });
+
+    testWidgets('repeat-one reports every full play of the same song', (tester) async {
+      player.toggleRepeat();
+      await player.playQueue(queue);
+      await listen(tester, 31);
+      engine.complete();
+      await tester.pump(const Duration(milliseconds: 60));
+      await listen(tester, 31);
+      engine.complete();
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(backend.scrobbles.map((s) => s.id), ['1', '1']);
+      await player.pause();
+    });
+
+    testWidgets('can be turned off', (tester) async {
+      settings.syncRecentPlays = false;
+      await player.playQueue(queue);
+      await listen(tester, 40);
+      await player.next();
+      expect(backend.scrobbles, isEmpty);
+      await player.pause();
+    });
+  });
 }
