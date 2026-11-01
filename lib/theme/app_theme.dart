@@ -94,7 +94,7 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.circular(AppRadius.tag),
           boxShadow: AppShadows.heavy,
         ),
-        textStyle: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+        textStyle: text.bodySmall,
         waitDuration: const Duration(milliseconds: 500),
       ),
       sliderTheme: const SliderThemeData(
@@ -116,8 +116,22 @@ abstract final class AppTheme {
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.accent.withValues(alpha: 0.18),
         height: 64,
-        labelTextStyle: const WidgetStatePropertyAll(
-          TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            size: 24,
+            color: states.contains(WidgetState.selected)
+                ? AppColors.accent
+                : AppColors.textSecondary,
+          ),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: states.contains(WidgetState.selected)
+                ? AppColors.accent
+                : AppColors.textSecondary,
+          ),
         ),
       ),
     );
