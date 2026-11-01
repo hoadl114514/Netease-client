@@ -1,0 +1,131 @@
+import 'package:flutter/material.dart';
+
+import '../data/format.dart';
+import '../data/models.dart';
+import '../pages/library/playlist_page.dart';
+import '../theme/app_theme.dart';
+import 'cover_art.dart';
+import 'hover_builder.dart';
+import 'round_icon_button.dart';
+
+/// 按宽度自适应列数的歌单网格（sliver）。封面正方形 + 两行标题。
+class SliverPlaylistGrid extends StatelessWidget {
+  const SliverPlaylistGrid({super.key, required this.playlists});
+
+  final List<Playlist> playlists;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverLayoutBuilder(
+      builder: (context, c) {
+        // 按宽度算列数和格子高度：封面正方形 + 间距 + 两行标题，避免固定宽高比导致溢出。
+        const spacing = 16.0;
+        const titleHeight = 10 + 14 * 1.4 * 2 + 4;
+        final columns = ((c.crossAxisExtent + spacing) / (140 + spacing)).floor().clamp(2, 6);
+        final cell = (c.crossAxisExtent - spacing * (columns - 1)) / columns;
+        return SliverGrid.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            mainAxisExtent: cell + titleHeight,
+          ),
+          itemCount: playlists.length,
+          itemBuilder: (context, i) => PlaylistCard(playlist: playlists[i]),
+        );
+      },
+    );
+  }
+}
+
+/// 歌单卡片：封面（右上角播放量）+ 标题，点击进歌单页。
+class PlaylistCard extends StatelessWidget {
+  const PlaylistCard({super.key, required this.playlist});
+
+  final Playlist playlist;
+
+  @override
+  Widget build(BuildContext context) {
+    void open() =>
+        Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => PlaylistPage(playlist: playlist)));
+    return HoverBuilder(
+      onTap: open,
+      builder: (context, hovered) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedSlide(
+            offset: hovered ? const Offset(0, -0.02) : Offset.zero,
+            duration: const Duration(milliseconds: 180),
+            child: Stack(
+              children: [
+                CoverArt(
+                  palette: playlist.palette,
+                  seed: playlist.id,
+                  imageUrl: playlist.coverUrl,
+                  radius: AppRadius.panel,
+                  shadow: hovered ? AppShadows.heavy : null,
+                ),
+                // 右上角播放量，下面垫一层渐变保证可读。
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 10, 16),
+                    decoration: const BoxDecoration(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.panel)),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x66000000), Color(0x00000000)],
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
+                        Text(
+                          formatPlayCount(playlist.playCount),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: AnimatedOpacity(
+                    opacity: hovered ? 1 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: RoundIconButton(
+                      icon: Icons.play_arrow_rounded,
+                      onPressed: hovered ? open : null,
+                      size: 44,
+                      iconSize: 26,
+                      filled: true,
+                      background: AppColors.accent,
+                      color: AppColors.onAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            playlist.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: hovered ? AppColors.textPrimary : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

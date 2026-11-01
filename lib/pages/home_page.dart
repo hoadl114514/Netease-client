@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../app/app.dart';
 import '../data/format.dart';
 import '../data/models.dart';
 import '../shell/destinations.dart';
 import '../state/account_controller.dart';
+import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cover_art.dart';
-import '../widgets/dev_badge.dart';
 import '../widgets/hover_builder.dart';
-import '../widgets/round_icon_button.dart';
-import 'library/playlist_page.dart';
+import '../widgets/playlist_card.dart';
 import 'login_page.dart';
+import 'music/daily_songs_page.dart';
+import 'now_playing/now_playing_page.dart';
 
 const _dailyPalette = [Color(0xFF3B2A4D), Color(0xFFB0605A), Color(0xFFE8B66B)];
 const _likedPalette = [Color(0xFFE85A9A), Color(0xFF6A4BC4), Color(0xFF1F1A3A)];
 const _fmPalette = [Color(0xFF1B1036), Color(0xFFE0367F), Color(0xFF29D3F0)];
 
-/// 首页。推荐类功能（每日推荐、私人 FM、推荐歌单）待开发，先放我的歌单。
+/// 首页：每日推荐、我喜欢、私人 FM、我的歌单、推荐歌单。
 class HomePage extends StatelessWidget {
   const HomePage({super.key, required this.onNavigate});
 
@@ -42,15 +44,7 @@ class HomePage extends StatelessWidget {
                   builder: (context, c) {
                     final shortcuts = Column(
                       children: [
-                        _ShortcutCard(
-                          title: '每日推荐',
-                          subtitle: '根据你的音乐口味 · 每日更新',
-                          icon: Icons.calendar_today_rounded,
-                          palette: _dailyPalette,
-                          seed: 'daily',
-                          ready: false,
-                          onTap: () => showNotReady('每日推荐'),
-                        ),
+                        _DailyCard(key: ValueKey(account.profile?.userId)),
                         const SizedBox(height: 16),
                         _ShortcutCard(
                           title: '我喜欢的音乐',
@@ -60,6 +54,8 @@ class HomePage extends StatelessWidget {
                           icon: Icons.favorite_rounded,
                           palette: _likedPalette,
                           seed: 'liked',
+                          // 「我喜欢」歌单的封面就是最近喜欢的第一首歌的封面。
+                          imageUrl: account.likedPlaylist?.coverUrl,
                           onTap: () => onNavigate(Destination.liked),
                         ),
                       ],
@@ -98,44 +94,59 @@ class HomePage extends StatelessWidget {
           ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 0),
-            sliver: SliverLayoutBuilder(
-              builder: (context, c) {
-                // 按宽度算列数和格子高度：封面正方形 + 间距 + 两行标题，避免固定宽高比导致溢出。
-                const spacing = 16.0;
-                const titleHeight = 10 + 14 * 1.4 * 2 + 4;
-                final columns = ((c.crossAxisExtent + spacing) / (180 + spacing)).floor().clamp(
-                  2,
-                  6,
-                );
-                final cell = (c.crossAxisExtent - spacing * (columns - 1)) / columns;
-                return SliverGrid.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisSpacing: spacing,
-                    crossAxisSpacing: spacing,
-                    mainAxisExtent: cell + titleHeight,
-                  ),
-                  itemCount: playlists.length,
-                  itemBuilder: (context, i) => _PlaylistCard(playlist: playlists[i]),
-                );
-              },
-            ),
+            sliver: SliverPlaylistGrid(playlists: playlists),
           ),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 32),
-            sliver: const SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionTitle('推荐歌单', ready: false),
-                  SizedBox(height: 8),
-                  Text('个性化推荐还在开发中', style: TextStyle(color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
+            padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 16),
+            sliver: const SliverToBoxAdapter(child: _SectionTitle('推荐歌单')),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32),
+            // 登录状态变了（换号、退出）就重新拉推荐。
+            sliver: _RecommendedPlaylists(key: ValueKey(account.profile?.userId)),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RecommendedPlaylists extends StatefulWidget {
+  const _RecommendedPlaylists({super.key});
+
+  @override
+  State<_RecommendedPlaylists> createState() => _RecommendedPlaylistsState();
+}
+
+class _RecommendedPlaylistsState extends State<_RecommendedPlaylists> {
+  late Future<List<Playlist>> _future = _load();
+
+  Future<List<Playlist>> _load() => AppScope.of(context).api.recommendPlaylists(limit: 12);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Playlist>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return SliverToBoxAdapter(
+            child: TextButton(
+              onPressed: () => setState(() => _future = _load()),
+              child: const Text('推荐加载失败，点击重试'),
+            ),
+          );
+        }
+        final list = snap.data;
+        if (list == null) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        return SliverPlaylistGrid(playlists: list);
+      },
     );
   }
 }
@@ -160,10 +171,9 @@ class _Greeting extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title, {this.ready = true});
+  const _SectionTitle(this.title);
 
   final String title;
-  final bool ready;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +189,6 @@ class _SectionTitle extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(title, style: Theme.of(context).textTheme.titleLarge),
-        if (!ready) ...[const SizedBox(width: 10), const DevBadge()],
       ],
     );
   }
@@ -219,7 +228,7 @@ class _ShortcutCard extends StatelessWidget {
     required this.palette,
     required this.seed,
     required this.onTap,
-    this.ready = true,
+    this.imageUrl,
   });
 
   final String title;
@@ -228,7 +237,9 @@ class _ShortcutCard extends StatelessWidget {
   final List<Color> palette;
   final String seed;
   final VoidCallback onTap;
-  final bool ready;
+
+  /// 卡片封面；为 null 时用 [palette] 生成的占位图。
+  final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -238,7 +249,12 @@ class _ShortcutCard extends StatelessWidget {
         children: [
           SizedBox(
             width: 72,
-            child: CoverArt(palette: palette, seed: seed, radius: AppRadius.card),
+            child: CoverArt(
+              palette: palette,
+              seed: seed,
+              imageUrl: imageUrl,
+              radius: AppRadius.card,
+            ),
           ),
           const SizedBox(width: 18),
           Expanded(
@@ -250,7 +266,6 @@ class _ShortcutCard extends StatelessWidget {
                     Icon(icon, size: 20, color: AppColors.accent),
                     const SizedBox(width: 8),
                     Text(title, style: Theme.of(context).textTheme.titleMedium),
-                    if (!ready) ...[const SizedBox(width: 8), const DevBadge()],
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -270,23 +285,83 @@ class _ShortcutCard extends StatelessWidget {
   }
 }
 
-class _PersonalFmCard extends StatelessWidget {
-  const _PersonalFmCard();
+/// 每日推荐卡片：登录后用今天推荐的第一首歌的封面。
+class _DailyCard extends StatefulWidget {
+  const _DailyCard({super.key});
+
+  @override
+  State<_DailyCard> createState() => _DailyCardState();
+}
+
+class _DailyCardState extends State<_DailyCard> {
+  Song? _first;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AccountScope.read(context).isLoggedIn) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final songs = await AppScope.of(context).api.dailySongs();
+      if (mounted && songs.isNotEmpty) setState(() => _first = songs.first);
+    } catch (_) {
+      // 取不到就保留占位封面。
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final loggedIn = AccountScope.of(context).isLoggedIn;
+    final first = _first;
+    return _ShortcutCard(
+      title: '每日推荐',
+      subtitle: !loggedIn
+          ? '登录后查看'
+          : first == null
+          ? '根据你的音乐口味 · 每日更新'
+          : '${first.title} - ${first.artist}',
+      icon: Icons.calendar_today_rounded,
+      palette: _dailyPalette,
+      seed: 'daily',
+      imageUrl: first?.coverUrl,
+      onTap: () => loggedIn ? DailySongsPage.open(context) : LoginPage.open(context),
+    );
+  }
+}
+
+class _PersonalFmCard extends StatelessWidget {
+  const _PersonalFmCard();
+
+  Future<void> _start(BuildContext context) async {
+    if (!AccountScope.read(context).isLoggedIn) return LoginPage.open(context);
+    final api = AppScope.of(context).api;
+    try {
+      await PlayerScope.read(context).playRadio(api.personalFm, title: '私人 FM');
+    } catch (e) {
+      AppScope.toast('私人 FM 加载失败：$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = PlayerScope.of(context);
+    // 正在放私人 FM：封面换成当前这首，点击打开播放页而不是重新开始。
+    final playing = player.isRadio ? player.current : null;
     return _Panel(
       padding: const EdgeInsets.all(20),
-      onTap: () => showNotReady('私人 FM'),
+      onTap: () => playing != null ? openNowPlaying(context) : _start(context),
       child: Row(
         children: [
-          const SizedBox(
+          SizedBox(
             width: 96,
             child: CoverArt(
-              palette: _fmPalette,
-              seed: 'fm',
+              palette: playing?.palette ?? _fmPalette,
+              seed: playing?.id ?? 'fm',
+              imageUrl: playing?.coverUrl,
               radius: AppRadius.card,
-              icon: Icons.radio_rounded,
+              icon: playing == null ? Icons.radio_rounded : null,
             ),
           ),
           const SizedBox(width: 20),
@@ -294,110 +369,15 @@ class _PersonalFmCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text('私人 FM', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(width: 10),
-                    const DevBadge(),
-                  ],
-                ),
+                Row(children: [Text('私人 FM', style: Theme.of(context).textTheme.titleLarge)]),
                 const SizedBox(height: 6),
-                const Text(
-                  '根据你的口味连续播放',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                Text(
+                  playing == null ? '根据你的口味连续播放' : '正在播放：${playing.title} - ${playing.artist}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlaylistCard extends StatelessWidget {
-  const _PlaylistCard({required this.playlist});
-
-  final Playlist playlist;
-
-  @override
-  Widget build(BuildContext context) {
-    void open() =>
-        Navigator.of(context)
-            .push(MaterialPageRoute<void>(builder: (_) => PlaylistPage(playlist: playlist)));
-    return HoverBuilder(
-      onTap: open,
-      builder: (context, hovered) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedSlide(
-            offset: hovered ? const Offset(0, -0.02) : Offset.zero,
-            duration: const Duration(milliseconds: 180),
-            child: Stack(
-              children: [
-                CoverArt(
-                  palette: playlist.palette,
-                  seed: playlist.id,
-                  imageUrl: playlist.coverUrl,
-                  radius: AppRadius.panel,
-                  shadow: hovered ? AppShadows.heavy : null,
-                ),
-                // 右上角播放量，下面垫一层渐变保证可读。
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 10, 16),
-                    decoration: const BoxDecoration(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.panel)),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x66000000), Color(0x00000000)],
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
-                        Text(
-                          formatPlayCount(playlist.playCount),
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: AnimatedOpacity(
-                    opacity: hovered ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: RoundIconButton(
-                      icon: Icons.play_arrow_rounded,
-                      onPressed: hovered ? open : null,
-                      size: 44,
-                      iconSize: 26,
-                      filled: true,
-                      background: AppColors.accent,
-                      color: AppColors.onAccent,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            playlist.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.4,
-              color: hovered ? AppColors.textPrimary : AppColors.textSecondary,
             ),
           ),
         ],

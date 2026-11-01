@@ -141,9 +141,13 @@ Future<AppSettings> testSettings([Map<String, Object> values = const {}]) async 
 }
 
 /// 不联网的整套服务：网易云接口全部返回空结果。
-Future<({AppServices services, FakeEngine engine, FakeBackend backend})> fakeServices() async {
+Future<({AppServices services, FakeEngine engine, FakeBackend backend})> fakeServices({
+  http.Client? client,
+}) async {
   final settings = await testSettings();
-  final api = NeteaseApi(client: MockClient((_) async => http.Response('{"code":200}', 200)));
+  final api = NeteaseApi(
+    client: client ?? MockClient((_) async => http.Response('{"code":200}', 200)),
+  );
   final engine = FakeEngine();
   final backend = FakeBackend();
   final services = AppServices(

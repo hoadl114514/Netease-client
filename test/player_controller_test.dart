@@ -172,4 +172,48 @@ void main() {
     expect(player.song.id, '3');
     expect(engine.loaded.last, contains('/3/'));
   });
+
+  test('radio fetches the next batch at the end and skips duplicates', () async {
+    final batches = [
+      [song('a'), song('b')],
+      [song('b'), song('c')],
+    ];
+    var calls = 0;
+    await player.playRadio(() async => batches[calls++ % batches.length], title: '私人 FM');
+    expect(player.isRadio, isTrue);
+    expect(player.queue.map((s) => s.id), ['a', 'b']);
+    await player.next();
+    expect(player.song.id, 'b');
+    await player.next(); // 到底了：再取一批，去重后追加 c。
+    expect(player.queue.map((s) => s.id), ['a', 'b', 'c']);
+    expect(player.song.id, 'c');
+    expect(calls, 2);
+
+    // 普通队列会退出 FM 模式。
+    await player.playQueue(queue);
+    expect(player.isRadio, isFalse);
+  });
+
+  test('skipAndRemoveCurrent drops the song and plays the next one', () async {
+    await player.playRadio(() async => [song('a'), song('b'), song('c')], title: '私人 FM');
+    await player.skipAndRemoveCurrent();
+    expect(player.queue.map((s) => s.id), ['b', 'c']);
+    expect(player.song.id, 'b');
+  });
+
+  test('sleep timer pauses playback and can be cancelled', () async {
+    await player.playQueue(queue);
+    player.setSleepTimer(const Duration(milliseconds: 40));
+    expect(player.sleepAt, isNotNull);
+    expect(engine.playing, isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(engine.playing, isFalse);
+    expect(player.sleepAt, isNull);
+
+    await player.play();
+    player.setSleepTimer(const Duration(milliseconds: 40));
+    player.setSleepTimer(null);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(engine.playing, isTrue);
+  });
 }

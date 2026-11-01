@@ -10,11 +10,19 @@ class Song {
     required this.duration,
     this.coverUrl,
     this.subtitle,
+    this.artists = const [],
+    this.albumId,
     this._palette,
   });
 
   final String id;
   final String title;
+
+  /// 带 id 的歌手列表，用于跳转歌手页。和 [artist] 一一对应；本地构造的歌曲可能为空。
+  final List<ArtistRef> artists;
+
+  /// 专辑 id，用于跳转专辑页。
+  final String? albumId;
 
   /// 多位歌手用 ` / ` 连接。
   final String artist;
@@ -43,6 +51,9 @@ class Playlist {
     this.trackCount = 0,
     this.coverUrl,
     this.creator,
+    this.creatorId,
+    this.description,
+    this.subscribed = false,
     this.isLikedList = false,
     this._palette,
   });
@@ -53,12 +64,68 @@ class Playlist {
   final int trackCount;
   final String? coverUrl;
   final String? creator;
+  final int? creatorId;
+
+  /// 简介；排行榜用来放更新频率（如「每周四更新」）。
+  final String? description;
+
+  /// 当前账号是否收藏了这个歌单（自己创建的为 false）。
+  final bool subscribed;
 
   /// 账号的「我喜欢的音乐」。
   final bool isLikedList;
   final List<Color>? _palette;
 
   List<Color> get palette => _palette ?? fallbackPalette(id);
+}
+
+class ArtistRef {
+  const ArtistRef(this.id, this.name);
+
+  final String id;
+  final String name;
+}
+
+class Artist {
+  const Artist({
+    required this.id,
+    required this.name,
+    this.avatarUrl,
+    this.description,
+    this.songCount = 0,
+    this.albumCount = 0,
+  });
+
+  final String id;
+  final String name;
+  final String? avatarUrl;
+  final String? description;
+  final int songCount;
+  final int albumCount;
+}
+
+class Album {
+  const Album({
+    required this.id,
+    required this.name,
+    required this.artist,
+    this.coverUrl,
+    this.publishTime,
+    this.size = 0,
+    this.description,
+  });
+
+  final String id;
+  final String name;
+
+  /// 多位歌手用 ` / ` 连接。
+  final String artist;
+  final String? coverUrl;
+  final DateTime? publishTime;
+
+  /// 曲目数。
+  final int size;
+  final String? description;
 }
 
 class UserProfile {

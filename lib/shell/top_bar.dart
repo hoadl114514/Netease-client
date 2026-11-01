@@ -29,48 +29,31 @@ class TopBar extends StatelessWidget {
   }
 }
 
-class _SearchField extends StatefulWidget {
+/// 顶栏上的搜索入口：点击进入搜索页（输入时有联想）。
+class _SearchField extends StatelessWidget {
   const _SearchField();
 
   @override
-  State<_SearchField> createState() => _SearchFieldState();
-}
-
-class _SearchFieldState extends State<_SearchField> {
-  final _input = TextEditingController();
-
-  @override
-  void dispose() {
-    _input.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(AppRadius.pill),
-      borderSide: BorderSide.none,
-    );
-    return SizedBox(
-      height: 40,
-      child: TextField(
-        controller: _input,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (v) => SearchPage.open(context, v),
-        style: const TextStyle(fontSize: 14),
-        cursorColor: AppColors.accent,
-        decoration: InputDecoration(
-          hintText: '搜索音乐、歌手',
-          hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          filled: true,
-          fillColor: AppColors.surfaceHigh,
-          contentPadding: EdgeInsets.zero,
-          border: border,
-          enabledBorder: border,
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            borderSide: const BorderSide(color: AppColors.outline),
+    return Semantics(
+      button: true,
+      label: '搜索',
+      child: Material(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => SearchPage.start(context),
+          child: const SizedBox(
+            height: 40,
+            child: Row(
+              children: [
+                SizedBox(width: 12),
+                Icon(Icons.search_rounded, size: 20),
+                SizedBox(width: 8),
+                Text('搜索音乐、歌手', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+              ],
+            ),
           ),
         ),
       ),

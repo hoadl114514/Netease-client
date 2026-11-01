@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/services.dart';
 
 import '../api/netease_api.dart';
 import '../data/models.dart';
@@ -24,11 +27,37 @@ class SystemMediaBridge extends BaseAudioHandler with SeekHandler {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'io.github.hoadl114514.netease_client.playback',
       androidNotificationChannelName: '音乐播放',
+      // 白色单色小图标。按名字查找，android/app/src/main/res/raw/keep.xml 里保留了它。
+      androidNotificationIcon: 'drawable/ic_stat_music',
       // 暂停时也保持前台服务：Android 12+ 不允许应用从后台重新拉起前台服务，
       // 否则暂停后用耳机 / 蓝牙恢复播放会失败。通知里有「停止」按钮可以关掉。
       androidStopForegroundOnPause: false,
     ),
   );
+
+  static const _channel = MethodChannel('netease_client/system_media');
+
+  /// Android 上通知是否开着。关着时媒体通知发不出来，控制中心 / 锁屏看不到播放卡片。
+  /// 其他平台、或者原生端没有实现时视为开着。
+  static Future<bool> notificationsEnabled() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _channel.invokeMethod<bool>('notificationsEnabled') ?? true;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException {
+      return true;
+    }
+  }
+
+  /// 打开本应用的系统通知设置。
+  static Future<void> openNotificationSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openNotificationSettings');
+    } on MissingPluginException {
+      // 非 Android。
+    }
+  }
 
   String? _songId;
   ({bool playing, bool loading, int index, AudioQuality? quality})? _last;

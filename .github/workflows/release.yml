@@ -1,10 +1,22 @@
-# 推送 v* 标签时：跑检查、构建 Android APK，并发布到 GitHub Releases。
+# 推送 v* 标签，或在 Actions 页面手动运行（填版本标签）时：跑检查、构建 Android APK，
+# 并发布到 GitHub Releases。手动运行时会在当前分支的最新提交上创建该标签。
 # 标签名带 alpha / beta / rc 时发布为预发布版本。
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签，例如 v0.0.2-alpha'
+        required: true
+      name:
+        description: 'Release 标题，留空则用标签名'
+        required: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -36,7 +48,7 @@ jobs:
           flutter build apk --release
           flutter build apk --release --split-per-abi
           mkdir dist
-          v="${GITHUB_REF_NAME}"
+          v="${TAG}"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/netease-client-$v-universal.apk"
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/netease-client-$v-arm64-v8a.apk"
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/netease-client-$v-armeabi-v7a.apk"
@@ -44,6 +56,10 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ inputs.name || env.TAG }}
+          # 手动运行时在当前提交上建标签；推标签触发时标签已存在，这项不起作用。
+          target_commitish: ${{ github.sha }}
           files: dist/*
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          prerelease: ${{ contains(env.TAG, 'alpha') || contains(env.TAG, 'beta') || contains(env.TAG, 'rc') }}
           generate_release_notes: true

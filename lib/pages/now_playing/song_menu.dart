@@ -5,8 +5,10 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../state/account_controller.dart';
 import '../../widgets/cover_art.dart';
-import '../../widgets/dev_badge.dart';
+import '../login_page.dart';
+import '../music/nav.dart';
 
 Future<void> _sheet(BuildContext context, Widget child) => showModalBottomSheet<void>(
   context: context,
@@ -25,6 +27,108 @@ Future<void> showQualitySheet(BuildContext context) => _sheet(context, const _Qu
 /// 播放队列。
 Future<void> showQueueSheet(BuildContext context) => _sheet(context, const _QueueSheet());
 
+/// 收藏到自己的歌单。
+Future<void> showAddToPlaylistSheet(BuildContext context, Song song) {
+  if (!AccountScope.read(context).isLoggedIn) return LoginPage.open(context);
+  return _sheet(context, _AddToPlaylistSheet(song: song));
+}
+
+/// 定时关闭。
+Future<void> showSleepTimerSheet(BuildContext context) => _sheet(context, const _SleepSheet());
+
+class _AddToPlaylistSheet extends StatelessWidget {
+  const _AddToPlaylistSheet({required this.song});
+
+  final Song song;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = AccountScope.of(context);
+    final own = account.ownPlaylists;
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.5,
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('收藏到歌单', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            Expanded(
+              child: own.isEmpty
+                  ? const Center(
+                      child: Text('还没有自己创建的歌单', style: TextStyle(color: AppColors.textSecondary)),
+                    )
+                  : ListView(
+                      children: [
+                        for (final p in own)
+                          ListTile(
+                            leading: SizedBox(
+                              width: 44,
+                              child: CoverArt(
+                                palette: p.palette,
+                                seed: p.id,
+                                imageUrl: p.coverUrl,
+                                radius: 4,
+                              ),
+                            ),
+                            title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            subtitle: Text('${p.trackCount} 首'),
+                            onTap: () async {
+                              Navigator.of(context).pop();
+                              try {
+                                await account.addToPlaylist(p, song);
+                                AppScope.toast('已收藏到「${p.name}」');
+                              } catch (e) {
+                                AppScope.toast('收藏失败：$e');
+                              }
+                            },
+                          ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SleepSheet extends StatelessWidget {
+  const _SleepSheet();
+
+  static const _options = [15, 30, 45, 60, 90];
+
+  @override
+  Widget build(BuildContext context) {
+    final player = PlayerScope.of(context);
+    void set(Duration? d) {
+      Navigator.of(context).pop();
+      player.setSleepTimer(d);
+      AppScope.toast(d == null ? '已取消定时关闭' : '${d.inMinutes} 分钟后暂停播放');
+    }
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final m in _options)
+            ListTile(
+              title: Text('$m 分钟'),
+              onTap: () => set(Duration(minutes: m)),
+            ),
+          if (player.sleepAt != null)
+            ListTile(
+              title: const Text('取消定时', style: TextStyle(color: AppColors.accent)),
+              onTap: () => set(null),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
 class _SongMenu extends StatelessWidget {
   const _SongMenu();
 
@@ -40,12 +144,14 @@ class _SongMenu extends StatelessWidget {
     final offset = player.lyricOffset.inMilliseconds / 1000;
     final active = player.activeLyricIndex;
 
-    Widget pending(IconData icon, String label) => ListTile(
-      leading: Icon(icon, color: AppColors.textMuted),
-      title: Text(label, style: const TextStyle(color: AppColors.textSecondary)),
-      trailing: const DevBadge(),
-      onTap: () => showNotReady(label),
-    );
+    // 先关掉菜单再执行，避免菜单盖在新页面上。
+    void then(Future<void> Function() action) {
+      Navigator.of(context).pop();
+      action();
+    }
+
+    final sleepAt = player.sleepAt;
+    final api = AppScope.of(context).api;
 
     return ListenableBuilder(
       listenable: settings,
@@ -171,10 +277,68 @@ class _SongMenu extends StatelessWidget {
                       },
               ),
               const Divider(),
-              pending(Icons.playlist_add_rounded, '收藏到歌单'),
-              pending(Icons.person_outline_rounded, '查看歌手'),
-              pending(Icons.album_outlined, '查看专辑'),
-              pending(Icons.bedtime_outlined, '定时关闭'),
+              if (player.isRadio)
+                ListTile(
+                  leading: const Icon(Icons.thumb_down_outlined, color: AppColors.textPrimary),
+                  title: const Text('不喜欢这首'),
+                  subtitle: const Text('私人 FM 不再推荐，并跳到下一首'),
+                  onTap: () => then(() async {
+                    try {
+                      await api.fmTrash(song.id);
+                    } catch (e) {
+                      AppScope.toast('操作失败：$e');
+                      return;
+                    }
+                    await player.skipAndRemoveCurrent();
+                  }),
+                ),
+              ListTile(
+                leading: const Icon(Icons.playlist_add_rounded, color: AppColors.textPrimary),
+                title: const Text('收藏到歌单'),
+                onTap: () {
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  showAddToPlaylistSheet(nav.context, song);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded, color: AppColors.textPrimary),
+                title: const Text('查看歌手'),
+                subtitle: Text(song.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                enabled: song.artists.isNotEmpty,
+                onTap: () {
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  openSongArtist(nav.context, song);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.album_outlined, color: AppColors.textPrimary),
+                title: const Text('查看专辑'),
+                subtitle: Text(song.album, maxLines: 1, overflow: TextOverflow.ellipsis),
+                enabled: song.albumId != null,
+                onTap: () {
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  openAlbum(nav.context, song.albumId!, name: song.album);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bedtime_outlined, color: AppColors.textPrimary),
+                title: const Text('定时关闭'),
+                trailing: sleepAt == null
+                    ? null
+                    : Text(
+                        '${sleepAt.hour.toString().padLeft(2, '0')}:'
+                        '${sleepAt.minute.toString().padLeft(2, '0')} 暂停',
+                        style: const TextStyle(color: AppColors.accent),
+                      ),
+                onTap: () {
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  showSleepTimerSheet(nav.context);
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),

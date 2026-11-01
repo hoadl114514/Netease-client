@@ -81,7 +81,7 @@ class _AccountCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          profile == null ? '点击使用 Cookie 登录' : '查看个人资料',
+                          profile == null ? '点击登录' : '查看个人资料',
                           style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                         ),
                       ],
@@ -114,7 +114,7 @@ class _AccountCard extends StatelessWidget {
                       children: [
                         Text('切换账号', style: TextStyle(fontSize: 16)),
                         Text(
-                          '用另一段 Cookie 登录',
+                          '登录另一个账号',
                           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                         ),
                       ],

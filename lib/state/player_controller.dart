@@ -84,6 +84,13 @@ class PlayerController extends ChangeNotifier {
 
   Timer? _timer;
 
+  /// 私人 FM 这类"无尽队列"：放到最后一首时调用它取下一批追加到队列。
+  Future<List<Song>> Function()? _extend;
+  bool _extending = false;
+
+  Timer? _sleepTimer;
+  DateTime? _sleepAt;
+
   /// 给用户看的提示（切歌失败、试听、音质降级等），由界面弹 SnackBar。
   Stream<String> get notices => _notices.stream;
 
@@ -115,6 +122,12 @@ class PlayerController extends ChangeNotifier {
 
   /// 非 null 表示只拿到了试听片段。
   ({Duration start, Duration end})? get trial => _trial;
+
+  /// 正在放私人 FM（无尽队列）。
+  bool get isRadio => _extend != null;
+
+  /// 定时关闭的时间点；没开时为 null。
+  DateTime? get sleepAt => _sleepAt;
 
   /// 当前封面的主色（从图片里取，取到之前用占位色）。
   List<Color> get palette => _coverPalette ?? current?.palette ?? const [Color(0xFF333333)];
@@ -162,11 +175,76 @@ class PlayerController extends ChangeNotifier {
   /// 替换队列并从 [start] 开始播放。
   Future<void> playQueue(List<Song> songs, {int start = 0, String title = ''}) {
     if (songs.isEmpty) return Future.value();
+    _extend = null;
     _queue = List.unmodifiable(songs);
     _queueTitle = title;
     _history.clear();
     _failStreak = 0;
     return _load(start.clamp(0, songs.length - 1));
+  }
+
+  /// 播放一个无尽队列（私人 FM）：先取第一批，放到最后一首时再用 [fetch] 取下一批。
+  /// 随机播放对它无意义，期间关闭。
+  Future<void> playRadio(Future<List<Song>> Function() fetch, {required String title}) async {
+    final first = await fetch();
+    if (first.isEmpty) {
+      _notices.add('$title 暂时没有可播放的歌曲');
+      return;
+    }
+    await playQueue(first, title: title);
+    _extend = fetch;
+    _shuffle = false;
+    notifyListeners();
+  }
+
+  /// 从队列里去掉当前这首并跳到下一首（私人 FM 的「不喜欢」）。
+  Future<void> skipAndRemoveCurrent() async {
+    if (current == null) return;
+    final i = _index;
+    if (i == _queue.length - 1) await _extendQueue();
+    if (_queue.length <= 1) return;
+    _queue = List.unmodifiable([..._queue]..removeAt(i));
+    _index = -1; // 让 _load 视为换歌。
+    _history.clear();
+    await _load(i.clamp(0, _queue.length - 1));
+  }
+
+  Future<void> _extendQueue() async {
+    final fetch = _extend;
+    if (fetch == null || _extending) return;
+    _extending = true;
+    try {
+      final known = {for (final s in _queue) s.id};
+      final more = [
+        for (final s in await fetch())
+          if (!known.contains(s.id)) s,
+      ];
+      if (more.isNotEmpty && identical(fetch, _extend)) {
+        _queue = List.unmodifiable([..._queue, ...more]);
+        notifyListeners();
+      }
+    } catch (e) {
+      _notices.add('获取更多歌曲失败：$e');
+    } finally {
+      _extending = false;
+    }
+  }
+
+  /// 定时关闭：[after] 后暂停；传 null 取消。
+  void setSleepTimer(Duration? after) {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepAt = null;
+    if (after != null) {
+      _sleepAt = DateTime.now().add(after);
+      _sleepTimer = Timer(after, () {
+        _sleepTimer = null;
+        _sleepAt = null;
+        pause();
+        _notices.add('定时关闭：已暂停播放');
+      });
+    }
+    notifyListeners();
   }
 
   /// 跳到队列里的第 [i] 首。
@@ -186,6 +264,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   void toggleShuffle() {
+    if (isRadio) return;
     _shuffle = !_shuffle;
     _history.clear();
     notifyListeners();
@@ -196,11 +275,13 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _advance({required bool auto}) {
-    if (_queue.isEmpty) return Future.value();
+  Future<void> _advance({required bool auto}) async {
+    if (_queue.isEmpty) return;
     if (auto && _repeat == Repeat.one) {
       return seek(Duration.zero).then((_) => play());
     }
+    // 无尽队列放到最后一首：先取下一批，取到了就顺着放下去。
+    if (isRadio && _index == _queue.length - 1) await _extendQueue();
     _history.add(_index);
     if (_shuffle && _queue.length > 1) {
       var i = _index;
@@ -420,6 +501,7 @@ class PlayerController extends ChangeNotifier {
   @override
   void dispose() {
     _stopTicker();
+    _sleepTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }

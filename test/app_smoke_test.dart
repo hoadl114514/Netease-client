@@ -32,17 +32,20 @@ void main() {
     }
   }
 
-  testWidgets('home shows login prompts and pending features when logged out', (tester) async {
+  testWidgets('home shows login prompts and recommendations when logged out', (tester) async {
     await pumpApp(tester, withQueue: false);
     expect(find.text('我的歌单'), findsOneWidget);
     expect(find.text('登录后查看你的歌单'), findsOneWidget);
-    expect(find.text('待开发'), findsWidgets);
+    expect(find.text('私人 FM'), findsOneWidget);
+    await tester.drag(find.byType(CustomScrollView).first, const Offset(0, -600));
+    await settle(tester);
+    expect(find.text('推荐歌单'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     // 没有在放的歌时不显示迷你播放条。
     expect(find.byTooltip('歌词'), findsNothing);
   });
 
-  testWidgets('avatar opens drawer; unfinished pages say 待开发', (tester) async {
+  testWidgets('avatar opens drawer; recent plays asks to log in', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.byTooltip('个人中心'));
     await settle(tester);
@@ -52,10 +55,10 @@ void main() {
     await tester.tap(find.text('最近播放'));
     await settle(tester);
     expect(find.text('未登录'), findsNothing);
-    expect(find.text('最近播放'), findsOneWidget);
+    expect(find.text('登录后查看最近播放'), findsOneWidget);
   });
 
-  testWidgets('settings tab exposes quality, lyric source and cookie login', (tester) async {
+  testWidgets('settings tab exposes quality, lyric source and login methods', (tester) async {
     await pumpApp(tester, withQueue: false);
     await tester.tap(find.byTooltip('个人中心'));
     await settle(tester);
@@ -63,7 +66,14 @@ void main() {
     await settle(tester);
     expect(find.text('默认音质'), findsOneWidget);
     expect(find.text('默认歌词来源'), findsOneWidget);
-    await tester.tap(find.text('Cookie 登录'));
+    await tester.tap(find.text('登录账号'));
+    await settle(tester);
+    // 默认是扫码；假接口没给 key，显示错误而不是一直转圈。
+    expect(find.text('获取二维码失败'), findsOneWidget);
+    await tester.tap(find.text('手机号'));
+    await settle(tester);
+    expect(find.text('获取验证码'), findsOneWidget);
+    await tester.tap(find.text('Cookie'));
     await settle(tester);
     expect(find.text('验证并登录'), findsOneWidget);
   });

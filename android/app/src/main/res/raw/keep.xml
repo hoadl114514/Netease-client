@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  audio_service 按名字（getIdentifier）查找通知按钮图标，代码里没有直接引用，
+  release 构建的资源压缩会把它们删掉。删掉后 Android 13+ 构建 CustomAction 时图标 id 为 0
+  会抛异常，播放状态发不到系统，媒体会话不激活、通知不出现。这里显式保留。
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/audio_service_*,@drawable/ic_stat_music" />

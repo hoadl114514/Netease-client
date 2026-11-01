@@ -8,13 +8,16 @@ import 'cover_art.dart';
 
 /// 歌曲列表的一行。正在播放的那首标题高亮。
 class SongTile extends StatelessWidget {
-  const SongTile({super.key, required this.song, required this.onTap, this.index});
+  const SongTile({super.key, required this.song, required this.onTap, this.index, this.trailing});
 
   final Song song;
   final VoidCallback onTap;
 
   /// 序号（从 1 开始）。为 null 时不显示。
   final int? index;
+
+  /// 替代右侧时长显示的文字（如播放次数）。
+  final String? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +78,7 @@ class SongTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              formatDuration(song.duration),
+              trailing ?? formatDuration(song.duration),
               style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
           ],
