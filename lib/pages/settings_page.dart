@@ -30,8 +30,8 @@ class SettingsPage extends StatelessWidget {
           else
             ListTile(
               leading: const Icon(Icons.login_rounded),
-              title: const Text('Cookie 登录'),
-              subtitle: const Text('未登录时只能播放免费歌曲的标准音质'),
+              title: const Text('登录账号'),
+              subtitle: const Text('扫码、手机号验证码或 Cookie；未登录时只能播放免费歌曲'),
               onTap: () => LoginPage.open(context),
             ),
           const _Header('播放'),

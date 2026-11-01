@@ -66,7 +66,100 @@ class NeteaseApi {
     );
   }
 
+  // ---------------------------------------------------------------- 扫码 / 手机号登录
+  //
+  // 登录接口不带用户 Cookie。成功后网易云通过 Set-Cookie 下发 MUSIC_U 等字段，
+  // 调用方拿到后交给 AccountController 验证并保存。
+
+  /// 申请一个扫码登录用的 key。
+  Future<String> qrKey() async {
+    final data = await _api('https://music.163.com/api/login/qrcode/unikey', const {
+      'type': '3',
+    }, anonymous: true);
+    final key = _str(data['unikey']);
+    if (key == null) throw const ApiException('获取二维码失败');
+    return key;
+  }
+
+  /// 二维码内容：用网易云音乐 App 扫这个地址。
+  static String qrContent(String key) => 'https://music.163.com/login?codekey=$key';
+
+  /// 查询扫码状态。800 过期、801 等待扫码、802 已扫码待确认、803 登录成功（带 Cookie）。
+  Future<QrCheck> qrCheck(String key) async {
+    final res = await _post(Uri.parse('https://music.163.com/api/login/qrcode/client/login'), {
+      'key': key,
+      'type': '3',
+    }, anonymous: true);
+    final data = _decodeJson(utf8.decode(res.bodyBytes));
+    final code = _int(data['code']);
+    final status = switch (code) {
+      800 => QrStatus.expired,
+      801 => QrStatus.waiting,
+      802 => QrStatus.scanned,
+      803 => QrStatus.confirmed,
+      _ => throw ApiException(_str(data['message']) ?? '扫码状态查询失败', code: code),
+    };
+    return QrCheck(
+      status: status,
+      nickname: _str(data['nickname']),
+      avatarUrl: _https(_str(data['avatarUrl'])),
+      cookies: status == QrStatus.confirmed ? parseSetCookie(res.headers['set-cookie']) : const {},
+    );
+  }
+
+  /// 给手机号发登录验证码。
+  Future<void> sendCaptcha(String phone, {String countryCode = '86'}) => _api(
+    'https://music.163.com/api/sms/captcha/sent',
+    {'cellphone': phone, 'ctcode': countryCode},
+    anonymous: true,
+  );
+
+  /// 手机号 + 验证码登录，返回网易云下发的 Cookie。
+  Future<Map<String, String>> loginWithCaptcha(
+    String phone,
+    String captcha, {
+    String countryCode = '86',
+  }) async {
+    final res = await _post(Uri.parse('https://music.163.com/api/w/login/cellphone'), {
+      'type': '1',
+      'https': 'true',
+      'phone': phone,
+      'countrycode': countryCode,
+      'captcha': captcha,
+      'remember': 'true',
+    }, anonymous: true);
+    _check(_decodeJson(utf8.decode(res.bodyBytes)));
+    final cookies = parseSetCookie(res.headers['set-cookie']);
+    if (!cookies.containsKey('MUSIC_U')) throw const ApiException('登录失败：没有拿到登录凭证');
+    return cookies;
+  }
+
   // ---------------------------------------------------------------- 搜索 / 详情
+
+  /// 输入时的联想词（像搜索引擎的下拉补全）。
+  Future<List<String>> searchKeywords(String keyword) async {
+    final data = await _api('https://music.163.com/api/search/suggest/keyword', {'s': keyword});
+    final r = data['result'];
+    return [
+      if (r is Map)
+        for (final m in _list(r['allMatch']))
+          if (m is Map) ?_str(m['keyword']),
+    ];
+  }
+
+  /// 输入时的快速结果：几首歌、歌手、专辑、歌单。
+  Future<SearchSuggestion> searchSuggest(String keyword) async {
+    final data = await _api('https://music.163.com/api/search/suggest/web', {'s': keyword});
+    final r = data['result'];
+    if (r is! Map) return const SearchSuggestion();
+    return SearchSuggestion(
+      // 联想接口里的歌曲是旧格式（artists / album），没有封面。
+      songs: [for (final s in _list(r['songs'])) ?parseSong(s)],
+      artists: [for (final a in _list(r['artists'])) ?_parseArtist(a)],
+      albums: [for (final a in _list(r['albums'])) ?_parseAlbum(a)],
+      playlists: [for (final p in _list(r['playlists'])) ?_parsePlaylist(p)],
+    );
+  }
 
   Future<({List<Song> songs, int total})> searchSongs(
     String keyword, {
@@ -526,14 +619,18 @@ class NeteaseApi {
 
   // ---------------------------------------------------------------- 传输
 
-  Map<String, String> _headers() => {
+  Map<String, String> _headers({bool anonymous = false}) => {
     'User-Agent': _userAgent,
     'Referer': 'https://music.163.com/',
-    'Cookie': encodeCookie({..._deviceCookies, ..._cookies}),
+    'Cookie': encodeCookie({..._deviceCookies, if (!anonymous) ..._cookies}),
   };
 
-  Future<Map<String, Object?>> _api(String url, Map<String, String> form) async {
-    final res = await _post(Uri.parse(url), form);
+  Future<Map<String, Object?>> _api(
+    String url,
+    Map<String, String> form, {
+    bool anonymous = false,
+  }) async {
+    final res = await _post(Uri.parse(url), form, anonymous: anonymous);
     return _check(_decodeJson(utf8.decode(res.bodyBytes)));
   }
 
@@ -564,10 +661,16 @@ class NeteaseApi {
     return _check(_decodeJson(body));
   }
 
-  Future<http.Response> _post(Uri url, Map<String, String> form) async {
+  Future<http.Response> _post(Uri url, Map<String, String> form, {bool anonymous = false}) async {
     final http.Response res;
     try {
-      res = await _client.post(url, headers: _headers(), body: form).timeout(_timeout);
+      res = await _client
+          .post(
+            url,
+            headers: _headers(anonymous: anonymous),
+            body: form,
+          )
+          .timeout(_timeout);
     } on ApiException {
       rethrow;
     } catch (e) {
@@ -606,3 +709,34 @@ class NeteaseApi {
 
 /// 网易云图片按尺寸裁剪：`?param=200y200`。
 String sizedImage(String url, int px) => '$url${url.contains('?') ? '&' : '?'}param=${px}y$px';
+
+enum QrStatus { expired, waiting, scanned, confirmed }
+
+class QrCheck {
+  const QrCheck({required this.status, this.nickname, this.avatarUrl, this.cookies = const {}});
+
+  final QrStatus status;
+
+  /// 已扫码（802）时返回扫码账号的昵称和头像。
+  final String? nickname;
+  final String? avatarUrl;
+
+  /// 登录成功（803）时网易云下发的 Cookie。
+  final Map<String, String> cookies;
+}
+
+class SearchSuggestion {
+  const SearchSuggestion({
+    this.songs = const [],
+    this.artists = const [],
+    this.albums = const [],
+    this.playlists = const [],
+  });
+
+  final List<Song> songs;
+  final List<Artist> artists;
+  final List<Album> albums;
+  final List<Playlist> playlists;
+
+  bool get isEmpty => songs.isEmpty && artists.isEmpty && albums.isEmpty && playlists.isEmpty;
+}

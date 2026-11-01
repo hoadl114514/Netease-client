@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:netease_client/api/cookies.dart';
 import 'package:netease_client/api/netease_api.dart';
 
 /// 返回 [routes] 里路径匹配的响应，并记录请求。
@@ -234,5 +235,104 @@ void main() {
     final r = await api.searchArtists('周杰伦');
     expect(r.total, 84);
     expect(r.items.single.avatarUrl, 'https://p.jpg');
+  });
+
+  test('parseSetCookie splits folded headers without breaking Expires dates', () {
+    const header =
+        'MUSIC_U=abc; Max-Age=1296000; Expires=Wed, 29 Oct 2036 10:03:26 GMT; Path=/,'
+        '__csrf=x1; Path=/, NMTID=n=1; Domain=.music.163.com,MUSIC_A_T=deleted; Path=/';
+    expect(parseSetCookie(header), {'MUSIC_U': 'abc', '__csrf': 'x1', 'NMTID': 'n=1'});
+    expect(parseSetCookie(null), isEmpty);
+  });
+
+  test('qrCheck maps status codes and returns cookies on 803', () async {
+    var code = 801;
+    final seen = <http.Request>[];
+    final api = NeteaseApi(
+      cookies: {'MUSIC_U': 'old'},
+      client: MockClient((r) async {
+        seen.add(r);
+        return http.Response(
+          jsonEncode({'code': code, 'nickname': '某人', 'avatarUrl': 'http://a.jpg'}),
+          200,
+          headers: {
+            'content-type': 'application/json',
+            if (code == 803) 'set-cookie': 'MUSIC_U=new; Path=/,__csrf=c; Path=/',
+          },
+        );
+      }),
+    );
+    expect((await api.qrCheck('k')).status, QrStatus.waiting);
+    // 登录接口不带旧账号的 Cookie。
+    expect(seen.last.headers['Cookie'], isNot(contains('MUSIC_U')));
+    code = 802;
+    final scanned = await api.qrCheck('k');
+    expect(scanned.status, QrStatus.scanned);
+    expect(scanned.nickname, '某人');
+    code = 803;
+    final ok = await api.qrCheck('k');
+    expect(ok.status, QrStatus.confirmed);
+    expect(ok.cookies, {'MUSIC_U': 'new', '__csrf': 'c'});
+    code = 800;
+    expect((await api.qrCheck('k')).status, QrStatus.expired);
+    code = 500;
+    await expectLater(api.qrCheck('k'), throwsA(isA<ApiException>()));
+  });
+
+  test('loginWithCaptcha returns cookies and surfaces wrong captcha', () async {
+    var body = <String, Object>{'code': 200};
+    final api = NeteaseApi(
+      client: MockClient(
+        (r) async => http.Response(
+          jsonEncode(body),
+          200,
+          headers: {'content-type': 'application/json', 'set-cookie': 'MUSIC_U=u; Path=/'},
+        ),
+      ),
+    );
+    expect(await api.loginWithCaptcha('13800000000', '1234'), {'MUSIC_U': 'u'});
+    body = {'code': 503, 'message': '验证码错误'};
+    await expectLater(
+      api.loginWithCaptcha('13800000000', '0000'),
+      throwsA(isA<ApiException>().having((e) => e.message, 'message', '验证码错误')),
+    );
+  });
+
+  test('search suggestions read keywords and quick results', () async {
+    final api = apiWith({
+      '/suggest/keyword': {
+        'code': 200,
+        'result': {
+          'allMatch': [
+            {'keyword': '周杰伦'},
+            {'keyword': '周杰伦晴天'},
+          ],
+        },
+      },
+      '/suggest/web': {
+        'code': 200,
+        'result': {
+          'songs': [
+            {
+              'id': 1,
+              'name': '晴天',
+              'artists': [
+                {'id': 6452, 'name': '周杰伦'},
+              ],
+              'album': {'id': 2, 'name': '叶惠美'},
+              'duration': 1,
+            },
+          ],
+          'artists': [
+            {'id': 6452, 'name': '周杰伦'},
+          ],
+        },
+      },
+    });
+    expect(await api.searchKeywords('周杰'), ['周杰伦', '周杰伦晴天']);
+    final q = await api.searchSuggest('周杰');
+    expect(q.songs.single.title, '晴天');
+    expect(q.artists.single.name, '周杰伦');
+    expect(q.isEmpty, isFalse);
   });
 }

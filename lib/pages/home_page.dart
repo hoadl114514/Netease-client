@@ -12,6 +12,7 @@ import '../widgets/hover_builder.dart';
 import '../widgets/playlist_card.dart';
 import 'login_page.dart';
 import 'music/daily_songs_page.dart';
+import 'now_playing/now_playing_page.dart';
 
 const _dailyPalette = [Color(0xFF3B2A4D), Color(0xFFB0605A), Color(0xFFE8B66B)];
 const _likedPalette = [Color(0xFFE85A9A), Color(0xFF6A4BC4), Color(0xFF1F1A3A)];
@@ -43,16 +44,7 @@ class HomePage extends StatelessWidget {
                   builder: (context, c) {
                     final shortcuts = Column(
                       children: [
-                        _ShortcutCard(
-                          title: '每日推荐',
-                          subtitle: account.isLoggedIn ? '根据你的音乐口味 · 每日更新' : '登录后查看',
-                          icon: Icons.calendar_today_rounded,
-                          palette: _dailyPalette,
-                          seed: 'daily',
-                          onTap: () => account.isLoggedIn
-                              ? DailySongsPage.open(context)
-                              : LoginPage.open(context),
-                        ),
+                        _DailyCard(key: ValueKey(account.profile?.userId)),
                         const SizedBox(height: 16),
                         _ShortcutCard(
                           title: '我喜欢的音乐',
@@ -62,6 +54,8 @@ class HomePage extends StatelessWidget {
                           icon: Icons.favorite_rounded,
                           palette: _likedPalette,
                           seed: 'liked',
+                          // 「我喜欢」歌单的封面就是最近喜欢的第一首歌的封面。
+                          imageUrl: account.likedPlaylist?.coverUrl,
                           onTap: () => onNavigate(Destination.liked),
                         ),
                       ],
@@ -234,6 +228,7 @@ class _ShortcutCard extends StatelessWidget {
     required this.palette,
     required this.seed,
     required this.onTap,
+    this.imageUrl,
   });
 
   final String title;
@@ -243,6 +238,9 @@ class _ShortcutCard extends StatelessWidget {
   final String seed;
   final VoidCallback onTap;
 
+  /// 卡片封面；为 null 时用 [palette] 生成的占位图。
+  final String? imageUrl;
+
   @override
   Widget build(BuildContext context) {
     return _Panel(
@@ -251,7 +249,12 @@ class _ShortcutCard extends StatelessWidget {
         children: [
           SizedBox(
             width: 72,
-            child: CoverArt(palette: palette, seed: seed, radius: AppRadius.card),
+            child: CoverArt(
+              palette: palette,
+              seed: seed,
+              imageUrl: imageUrl,
+              radius: AppRadius.card,
+            ),
           ),
           const SizedBox(width: 18),
           Expanded(
@@ -282,6 +285,52 @@ class _ShortcutCard extends StatelessWidget {
   }
 }
 
+/// 每日推荐卡片：登录后用今天推荐的第一首歌的封面。
+class _DailyCard extends StatefulWidget {
+  const _DailyCard({super.key});
+
+  @override
+  State<_DailyCard> createState() => _DailyCardState();
+}
+
+class _DailyCardState extends State<_DailyCard> {
+  Song? _first;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AccountScope.read(context).isLoggedIn) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final songs = await AppScope.of(context).api.dailySongs();
+      if (mounted && songs.isNotEmpty) setState(() => _first = songs.first);
+    } catch (_) {
+      // 取不到就保留占位封面。
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loggedIn = AccountScope.of(context).isLoggedIn;
+    final first = _first;
+    return _ShortcutCard(
+      title: '每日推荐',
+      subtitle: !loggedIn
+          ? '登录后查看'
+          : first == null
+          ? '根据你的音乐口味 · 每日更新'
+          : '${first.title} - ${first.artist}',
+      icon: Icons.calendar_today_rounded,
+      palette: _dailyPalette,
+      seed: 'daily',
+      imageUrl: first?.coverUrl,
+      onTap: () => loggedIn ? DailySongsPage.open(context) : LoginPage.open(context),
+    );
+  }
+}
+
 class _PersonalFmCard extends StatelessWidget {
   const _PersonalFmCard();
 
@@ -297,18 +346,22 @@ class _PersonalFmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final player = PlayerScope.of(context);
+    // 正在放私人 FM：封面换成当前这首，点击打开播放页而不是重新开始。
+    final playing = player.isRadio ? player.current : null;
     return _Panel(
       padding: const EdgeInsets.all(20),
-      onTap: () => _start(context),
+      onTap: () => playing != null ? openNowPlaying(context) : _start(context),
       child: Row(
         children: [
-          const SizedBox(
+          SizedBox(
             width: 96,
             child: CoverArt(
-              palette: _fmPalette,
-              seed: 'fm',
+              palette: playing?.palette ?? _fmPalette,
+              seed: playing?.id ?? 'fm',
+              imageUrl: playing?.coverUrl,
               radius: AppRadius.card,
-              icon: Icons.radio_rounded,
+              icon: playing == null ? Icons.radio_rounded : null,
             ),
           ),
           const SizedBox(width: 20),
@@ -318,9 +371,11 @@ class _PersonalFmCard extends StatelessWidget {
               children: [
                 Row(children: [Text('私人 FM', style: Theme.of(context).textTheme.titleLarge)]),
                 const SizedBox(height: 6),
-                const Text(
-                  '根据你的口味连续播放',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                Text(
+                  playing == null ? '根据你的口味连续播放' : '正在播放：${playing.title} - ${playing.artist}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ],
             ),

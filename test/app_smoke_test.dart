@@ -58,7 +58,7 @@ void main() {
     expect(find.text('登录后查看最近播放'), findsOneWidget);
   });
 
-  testWidgets('settings tab exposes quality, lyric source and cookie login', (tester) async {
+  testWidgets('settings tab exposes quality, lyric source and login methods', (tester) async {
     await pumpApp(tester, withQueue: false);
     await tester.tap(find.byTooltip('个人中心'));
     await settle(tester);
@@ -66,7 +66,14 @@ void main() {
     await settle(tester);
     expect(find.text('默认音质'), findsOneWidget);
     expect(find.text('默认歌词来源'), findsOneWidget);
-    await tester.tap(find.text('Cookie 登录'));
+    await tester.tap(find.text('登录账号'));
+    await settle(tester);
+    // 默认是扫码；假接口没给 key，显示错误而不是一直转圈。
+    expect(find.text('获取二维码失败'), findsOneWidget);
+    await tester.tap(find.text('手机号'));
+    await settle(tester);
+    expect(find.text('获取验证码'), findsOneWidget);
+    await tester.tap(find.text('Cookie'));
     await settle(tester);
     expect(find.text('验证并登录'), findsOneWidget);
   });
