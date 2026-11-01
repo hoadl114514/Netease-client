@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '版本标签，例如 v0.0.2-alpha'
+        description: '版本标签，例如 v0.0.3-alpha'
         required: true
       name:
         description: 'Release 标题，留空则用标签名'
