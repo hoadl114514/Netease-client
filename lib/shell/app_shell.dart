@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../app/app.dart';
 import '../pages/home_page.dart';
+import '../pages/library/liked_page.dart';
 import '../pages/placeholder_page.dart';
+import '../pages/settings_page.dart';
+import '../state/player_controller.dart';
 import 'app_drawer.dart';
 import 'destinations.dart';
 import 'player_bar.dart';
@@ -20,9 +26,25 @@ class _AppShellState extends State<AppShell> {
 
   /// 最近一次所在的底部标签。从抽屉进入的页面不属于任何标签，此时保持原高亮。
   int _tab = 0;
+  StreamSubscription<String>? _notices;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 播放器的提示（无版权、试听、音质降级……）统一弹 SnackBar。
+    _notices ??= PlayerScope.read(context).notices.listen(AppScope.toast);
+  }
+
+  @override
+  void dispose() {
+    _notices?.cancel();
+    super.dispose();
+  }
 
   Widget _page() => switch (_current) {
-    Destination.forYou => const HomePage(),
+    Destination.forYou => HomePage(onNavigate: _go),
+    Destination.liked => const LikedPage(),
+    Destination.settings => const SettingsPage(),
     final d => PlaceholderPage(destination: d),
   };
 

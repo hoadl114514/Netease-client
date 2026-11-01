@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_data.dart';
+import '../pages/login_page.dart';
+import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/dev_badge.dart';
 import 'destinations.dart';
 import 'user_avatar.dart';
 
@@ -46,6 +48,13 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final account = AccountScope.of(context);
+    final profile = account.profile;
+    void login() {
+      Navigator.of(context).pop();
+      LoginPage.open(context);
+    }
+
     return Material(
       color: AppColors.cardHover,
       borderRadius: BorderRadius.circular(AppRadius.panel),
@@ -53,25 +62,27 @@ class _AccountCard extends StatelessWidget {
       child: Column(
         children: [
           InkWell(
-            onTap: () {},
-            child: const Padding(
-              padding: EdgeInsets.all(12),
+            onTap: profile == null ? login : () => showNotReady('个人主页'),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  UserAvatar(size: 60),
-                  SizedBox(width: 16),
+                  const UserAvatar(size: 60),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          MockData.userName,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                          profile?.nickname ?? '未登录',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          '查看个人资料',
-                          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                          profile == null ? '点击使用 Cookie 登录' : '查看个人资料',
+                          style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -82,7 +93,7 @@ class _AccountCard extends StatelessWidget {
           ),
           const Divider(height: 1, color: AppColors.borderStrong),
           InkWell(
-            onTap: () {},
+            onTap: login,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Row(
@@ -101,9 +112,9 @@ class _AccountCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('添加账号', style: TextStyle(fontSize: 16)),
+                        Text('切换账号', style: TextStyle(fontSize: 16)),
                         Text(
-                          '登录其他网易云账号',
+                          '用另一段 Cookie 登录',
                           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                         ),
                       ],
@@ -138,6 +149,7 @@ class _MenuItem extends StatelessWidget {
             Icon(destination.icon, size: 28, color: AppColors.textPrimary),
             const SizedBox(width: 18),
             Text(destination.label, style: const TextStyle(fontSize: 17)),
+            if (!destination.ready) ...[const SizedBox(width: 10), const DevBadge()],
           ],
         ),
       ),
@@ -154,23 +166,21 @@ class _StatusRow extends StatefulWidget {
 }
 
 class _StatusRowState extends State<_StatusRow> {
-  bool _sharing = true;
-
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _RoundEntry(
-          onTap: () => setState(() => _sharing = !_sharing),
+          onTap: () => showNotReady('听歌状态'),
           circle: const UserAvatar(size: 60),
           label: '听歌状态',
-          caption: _sharing ? '公开' : '隐藏',
-          captionColor: _sharing ? AppColors.accent : AppColors.textMuted,
+          caption: '待开发',
+          captionColor: AppColors.textMuted,
         ),
         const SizedBox(width: 16),
         _RoundEntry(
-          onTap: () {},
+          onTap: () => showNotReady('添加好友'),
           circle: Container(
             width: 60,
             height: 60,
@@ -236,23 +246,21 @@ class _Messages extends StatelessWidget {
           Row(
             children: [
               const Text('私信', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-              const Icon(Icons.chevron_right_rounded, size: 28, color: AppColors.textPrimary),
+              const SizedBox(width: 8),
+              const DevBadge(),
               const Spacer(),
               IconButton(
-                onPressed: () {},
+                onPressed: () => showNotReady('私信'),
                 tooltip: '写私信',
                 icon: const Icon(Icons.edit_square, color: AppColors.textPrimary),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            '还没有私信，和好友分享你的心头好吧。',
-            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-          ),
+          const Text('私信功能还在开发中。', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
           const SizedBox(height: 16),
           InkWell(
-            onTap: () {},
+            onTap: () => showNotReady('私信'),
             borderRadius: BorderRadius.circular(AppRadius.pill),
             child: Row(
               children: [

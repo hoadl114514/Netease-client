@@ -2,13 +2,16 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// 占位封面：用调色板画一张渐变 + 几个光斑，同一个 [seed] 总是画出同一张图。
-/// 接入 API 后在这里换成网络图片，调色板可以留作加载占位。
+import '../api/netease_api.dart';
+
+/// 封面。有 [imageUrl] 时加载网络图片，加载中或失败时显示用 [palette] 画的占位图；
+/// 同一个 [seed] 总是画出同一张占位图。
 class CoverArt extends StatelessWidget {
   const CoverArt({
     super.key,
     required this.palette,
     required this.seed,
+    this.imageUrl,
     this.radius = 8,
     this.icon,
     this.shadow,
@@ -16,36 +19,81 @@ class CoverArt extends StatelessWidget {
 
   final List<Color> palette;
   final String seed;
+  final String? imageUrl;
   final double radius;
   final IconData? icon;
   final List<BoxShadow>? shadow;
 
   @override
   Widget build(BuildContext context) {
+    final placeholder = CustomPaint(
+      painter: _CoverPainter(palette, _stableHash(seed)),
+      child: icon == null
+          ? null
+          : LayoutBuilder(
+              builder: (context, c) => Center(
+                child: Icon(
+                  icon,
+                  size: c.maxWidth * 0.36,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+    );
     return AspectRatio(
       aspectRatio: 1,
       child: DecoratedBox(
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(radius), boxShadow: shadow),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
-          child: CustomPaint(
-            painter: _CoverPainter(palette, seed.hashCode),
-            child: icon == null
-                ? null
-                : LayoutBuilder(
-                    builder: (context, c) => Center(
-                      child: Icon(
-                        icon,
-                        size: c.maxWidth * 0.36,
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-          ),
+          child: imageUrl == null
+              ? placeholder
+              : LayoutBuilder(
+                  builder: (context, c) {
+                    // 按实际显示尺寸向服务端要图，省流量也省解码内存。
+                    final px = (c.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(
+                      64,
+                      1024,
+                    );
+                    final bucket = [
+                      128,
+                      256,
+                      512,
+                      1024,
+                    ].firstWhere((b) => b >= px, orElse: () => 1024);
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        placeholder,
+                        Image.network(
+                          sizedImage(imageUrl!, bucket),
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                          frameBuilder: (_, child, frame, sync) => sync
+                              ? child
+                              : AnimatedOpacity(
+                                  opacity: frame == null ? 0 : 1,
+                                  duration: const Duration(milliseconds: 250),
+                                  child: child,
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
         ),
       ),
     );
   }
+}
+
+int _stableHash(String s) {
+  var h = 0;
+  for (final c in s.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return h;
 }
 
 class _CoverPainter extends CustomPainter {

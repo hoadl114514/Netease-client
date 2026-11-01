@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
 
@@ -33,7 +34,7 @@ class _LyricsViewState extends State<LyricsView> {
 
   final _scroll = ScrollController();
   List<GlobalKey> _keys = const [];
-  String? _songId;
+  Lyrics? _lyrics;
   int _lastActive = -2;
   DateTime _userScrolledAt = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -43,10 +44,11 @@ class _LyricsViewState extends State<LyricsView> {
     super.dispose();
   }
 
-  void _syncKeys(Song song) {
-    if (_songId == song.id) return;
-    _songId = song.id;
-    _keys = List.generate(song.lyrics.length, (_) => GlobalKey());
+  /// 换歌或换歌词来源时重建行 key 并回到顶部。
+  void _syncKeys(Lyrics lyrics) {
+    if (identical(_lyrics, lyrics)) return;
+    _lyrics = lyrics;
+    _keys = List.generate(lyrics.lines.length, (_) => GlobalKey());
     _lastActive = -2;
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
@@ -79,20 +81,30 @@ class _LyricsViewState extends State<LyricsView> {
 
   @override
   Widget build(BuildContext context) {
+    // 翻译、罗马音开关改了要立即生效（暂停时没有进度刷新）。
+    final settings = AppScope.of(context).settings;
+    return ListenableBuilder(listenable: settings, builder: (context, _) => _build(context));
+  }
+
+  Widget _build(BuildContext context) {
     final player = PlayerScope.of(context);
-    final lines = player.song.lyrics;
-    _syncKeys(player.song);
+    final settings = AppScope.of(context).settings;
+    final lyrics = player.lyrics;
+    final lines = lyrics.lines;
+    _syncKeys(lyrics);
     final active = player.activeLyricIndex;
     _follow(active);
 
     if (lines.isEmpty) {
       return Center(
         child: Text(
-          '暂无歌词，请欣赏音乐 ~',
+          player.lyricsLoading ? '歌词加载中…' : '暂无歌词，请欣赏音乐 ~',
           style: TextStyle(fontSize: widget.fontSize * 0.7, color: Colors.white70),
         ),
       );
     }
+    final showTranslation = settings.showTranslation;
+    final showRomaji = settings.showRomaji;
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -120,9 +132,16 @@ class _LyricsViewState extends State<LyricsView> {
                       : _LineState.future,
                   position: player.lyricPosition,
                   fontSize: widget.fontSize,
+                  wordSynced: lyrics.wordSynced,
+                  showTranslation: showTranslation,
+                  showRomaji: showRomaji,
                   onTap: widget.interactive
                       ? () {
-                          player.seek(line.start - player.lyricOffset);
+                          player.seek(
+                            line.start -
+                                player.lyricOffset -
+                                (player.trial?.start ?? Duration.zero),
+                          );
                           _userScrolledAt = DateTime.fromMillisecondsSinceEpoch(0);
                           _follow(i, force: true);
                         }
@@ -160,6 +179,9 @@ class _LyricLine extends StatelessWidget {
     required this.state,
     required this.position,
     required this.fontSize,
+    required this.wordSynced,
+    required this.showTranslation,
+    required this.showRomaji,
     required this.onTap,
   });
 
@@ -167,12 +189,18 @@ class _LyricLine extends StatelessWidget {
   final _LineState state;
   final Duration position;
   final double fontSize;
+
+  /// 逐行歌词时当前行整行点亮，不做逐字填色。
+  final bool wordSynced;
+  final bool showTranslation;
+  final bool showRomaji;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final style = TextStyle(fontSize: fontSize, fontWeight: FontWeight.w800, height: 1.3);
     final Widget main = switch (state) {
+      _LineState.active when !wordSynced => Text(line.text, style: style.copyWith(color: _sung)),
       _LineState.active => Wrap(
         children: [
           for (final w in line.words)
@@ -200,14 +228,14 @@ class _LyricLine extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             main,
-            if (line.translation case final t?) ...[
+            if (line.translation case final t? when showTranslation) ...[
               SizedBox(height: fontSize * 0.2),
               Text(
                 t,
                 style: TextStyle(fontSize: fontSize * 0.6, fontWeight: FontWeight.w600, color: sub),
               ),
             ],
-            if (line.romaji case final r?)
+            if (line.romaji case final r? when showRomaji)
               Text(
                 r,
                 style: TextStyle(fontSize: fontSize * 0.48, letterSpacing: 0.3, color: sub),

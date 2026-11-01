@@ -5,6 +5,8 @@ import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/backdrop_color.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/dev_badge.dart';
+import '../../widgets/like_button.dart';
 import '../../widgets/round_icon_button.dart';
 import 'lyrics_page.dart';
 import 'lyrics_view.dart';
@@ -39,8 +41,10 @@ class NowPlayingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final song = PlayerScope.of(context).song;
-    final color = backdropColorFor(song.palette);
+    final player = PlayerScope.of(context);
+    final song = player.current;
+    if (song == null) return const Scaffold(backgroundColor: AppColors.background);
+    final color = backdropColorFor(player.palette);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -106,6 +110,7 @@ class _PlayerSection extends StatelessWidget {
                     child: CoverArt(
                       palette: song.palette,
                       seed: song.id,
+                      imageUrl: song.coverUrl,
                       radius: AppRadius.card,
                       shadow: AppShadows.heavy,
                     ),
@@ -129,8 +134,13 @@ class _PlayerSection extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        // 音质等标签放在歌手名前面，做成小徽章。
-                        for (final t in song.tags.take(1)) _Badge(t),
+                        // 当前音质放在歌手名前面，做成小徽章，点开切换。
+                        if (player.quality case final q?)
+                          GestureDetector(
+                            onTap: () => showQualitySheet(context),
+                            child: _Badge(q.badge),
+                          ),
+                        if (player.trial != null) const _Badge('试听'),
                         Flexible(
                           child: Text(
                             song.artist,
@@ -144,14 +154,7 @@ class _PlayerSection extends StatelessWidget {
                   ],
                 ),
               ),
-              RoundIconButton(
-                icon: player.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: player.isLiked ? AppColors.accent : Colors.white,
-                onPressed: player.toggleLike,
-                tooltip: player.isLiked ? '取消喜欢' : '喜欢',
-                size: 44,
-                iconSize: 28,
-              ),
+              LikeButton(songId: song.id, size: 44, iconSize: 28, color: Colors.white),
             ],
           ),
           const SizedBox(height: 16),
@@ -162,9 +165,9 @@ class _PlayerSection extends StatelessWidget {
             children: [
               RoundIconButton(
                 icon: Icons.shuffle_rounded,
-                onPressed: () {},
-                tooltip: '随机播放',
-                color: Colors.white,
+                onPressed: player.toggleShuffle,
+                tooltip: player.shuffle ? '关闭随机播放' : '随机播放',
+                color: player.shuffle ? AppColors.accent : Colors.white,
                 size: 44,
                 iconSize: 26,
               ),
@@ -186,9 +189,9 @@ class _PlayerSection extends StatelessWidget {
                 iconSize: 42,
               ),
               RoundIconButton(
-                icon: Icons.repeat_rounded,
-                onPressed: () {},
-                tooltip: '列表循环',
+                icon: player.repeat == Repeat.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                onPressed: player.toggleRepeat,
+                tooltip: player.repeat == Repeat.one ? '单曲循环' : '列表循环',
                 color: AppColors.accent,
                 size: 44,
                 iconSize: 26,
@@ -200,16 +203,18 @@ class _PlayerSection extends StatelessWidget {
             children: [
               RoundIconButton(
                 icon: Icons.speaker_group_outlined,
-                onPressed: () {},
+                onPressed: () => showNotReady('播放设备'),
                 tooltip: '播放设备',
                 color: Colors.white70,
                 size: 40,
                 iconSize: 22,
               ),
               const Spacer(),
+              const _QualityButton(),
+              const Spacer(),
               RoundIconButton(
                 icon: Icons.ios_share_rounded,
-                onPressed: () {},
+                onPressed: () => showNotReady('分享'),
                 tooltip: '分享',
                 color: Colors.white70,
                 size: 40,
@@ -217,7 +222,7 @@ class _PlayerSection extends StatelessWidget {
               ),
               RoundIconButton(
                 icon: Icons.queue_music_rounded,
-                onPressed: () {},
+                onPressed: () => showQueueSheet(context),
                 tooltip: '播放列表',
                 color: Colors.white70,
                 size: 40,
@@ -243,15 +248,18 @@ class _TopBar extends StatelessWidget {
           color: Colors.white,
           iconSize: 30,
         ),
-        const Expanded(
+        Expanded(
           child: Column(
             children: [
-              Text('正在播放', style: TextStyle(fontSize: 11, letterSpacing: 1, color: Colors.white70)),
+              const Text(
+                '正在播放',
+                style: TextStyle(fontSize: 11, letterSpacing: 1, color: Colors.white70),
+              ),
               Text(
-                '每日推荐',
+                PlayerScope.of(context).queueTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -369,6 +377,7 @@ class _ArtistCard extends StatelessWidget {
                     child: CoverArt(
                       palette: song.palette.reversed.toList(),
                       seed: song.artist,
+                      imageUrl: song.coverUrl,
                       radius: 0,
                     ),
                   ),
@@ -405,16 +414,20 @@ class _ArtistCard extends StatelessWidget {
                             song.artist,
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                           ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            '12.8万 粉丝',
-                            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                          ),
+                          if (song.album.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              '专辑：${song.album}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                     OutlinedButton(
-                      onPressed: () {},
+                      onPressed: () => showNotReady('关注歌手'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: AppColors.outline),
@@ -425,17 +438,38 @@ class _ArtistCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  '来自月见丘的原创音乐企划，用旋律收集夜空里的星屑。（占位简介，接入 API 后替换）',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, height: 1.5, color: AppColors.textSecondary),
+                const Row(
+                  children: [
+                    DevBadge(),
+                    SizedBox(width: 8),
+                    Text(
+                      '歌手简介、热门歌曲',
+                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 当前音质，点开选择。只列出这首歌提供的档位。
+class _QualityButton extends StatelessWidget {
+  const _QualityButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final player = PlayerScope.of(context);
+    final q = player.quality;
+    return TextButton.icon(
+      onPressed: player.qualities.isEmpty ? null : () => showQualitySheet(context),
+      icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+      label: Text(q?.label ?? (player.isLoading ? '加载中' : '音质')),
+      style: TextButton.styleFrom(foregroundColor: Colors.white70),
     );
   }
 }

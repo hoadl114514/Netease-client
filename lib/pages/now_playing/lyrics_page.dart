@@ -14,8 +14,9 @@ class LyricsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = PlayerScope.of(context);
-    final song = player.song;
-    final color = backdropColorFor(song.palette);
+    final song = player.current;
+    if (song == null) return const Scaffold();
+    final color = backdropColorFor(player.palette);
 
     return Scaffold(
       body: AnimatedContainer(

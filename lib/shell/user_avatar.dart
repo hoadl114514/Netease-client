@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_data.dart';
+import '../api/netease_api.dart';
+import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 
-/// 用户头像。没有头像图时显示昵称首字。
+/// 用户头像。登录后显示账号头像（加载前显示昵称首字），未登录显示人形图标。
 class UserAvatar extends StatelessWidget {
   const UserAvatar({super.key, required this.size});
 
@@ -11,20 +12,39 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final profile = AccountScope.of(context).profile;
+    final initial = profile == null || profile.nickname.isEmpty
+        ? null
+        : Text(
+            profile.nickname.characters.first,
+            style: TextStyle(
+              fontSize: size * 0.48,
+              fontWeight: FontWeight.w800,
+              color: AppColors.onAccent,
+              height: 1,
+            ),
+          );
+    final px = (size * MediaQuery.devicePixelRatioOf(context)).ceil();
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
-      child: Text(
-        MockData.userName.characters.first,
-        style: TextStyle(
-          fontSize: size * 0.48,
-          fontWeight: FontWeight.w800,
-          color: AppColors.onAccent,
-          height: 1,
-        ),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: profile == null ? AppColors.cardHover : AppColors.accent,
+        shape: BoxShape.circle,
       ),
+      child: switch (profile?.avatarUrl) {
+        final url? => Image.network(
+          sizedImage(url, px),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => initial ?? const SizedBox.shrink(),
+        ),
+        null =>
+          initial ?? Icon(Icons.person_rounded, size: size * 0.6, color: AppColors.textSecondary),
+      },
     );
   }
 }

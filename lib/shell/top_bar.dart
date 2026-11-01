@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../pages/search_page.dart';
 import '../theme/app_theme.dart';
 import 'user_avatar.dart';
 
@@ -28,8 +29,21 @@ class TopBar extends StatelessWidget {
   }
 }
 
-class _SearchField extends StatelessWidget {
+class _SearchField extends StatefulWidget {
   const _SearchField();
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  final _input = TextEditingController();
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +54,13 @@ class _SearchField extends StatelessWidget {
     return SizedBox(
       height: 40,
       child: TextField(
+        controller: _input,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (v) => SearchPage.open(context, v),
         style: const TextStyle(fontSize: 14),
         cursorColor: AppColors.accent,
         decoration: InputDecoration(
-          hintText: '搜索音乐、歌手、歌词',
+          hintText: '搜索音乐、歌手',
           hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14),
           prefixIcon: const Icon(Icons.search_rounded, size: 20),
           filled: true,

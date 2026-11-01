@@ -1,50 +1,76 @@
 import 'package:flutter/material.dart';
 
-import '../data/mock_data.dart';
 import '../shell/app_shell.dart';
+import '../state/account_controller.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
 import 'app_info.dart';
+import 'services.dart';
 
 class NeteaseClientApp extends StatefulWidget {
-  const NeteaseClientApp({super.key, this.autoplay = true});
+  const NeteaseClientApp({super.key, required this.services});
 
-  /// 预览时自动开始"播放"，方便直接看到进度和歌词滚动。测试里关掉。
-  final bool autoplay;
+  final AppServices services;
 
   @override
   State<NeteaseClientApp> createState() => _NeteaseClientAppState();
 }
 
 class _NeteaseClientAppState extends State<NeteaseClientApp> {
-  // 从第一句歌词前一点开始，打开歌词页就能看到逐字效果。
-  late final PlayerController _player = PlayerController(
-    queue: MockData.queue,
-    initialPosition: const Duration(seconds: 10),
-  );
-
   @override
   void initState() {
     super.initState();
-    if (widget.autoplay) _player.play();
+    widget.services.account.restore();
   }
 
   @override
   void dispose() {
-    _player.dispose();
+    widget.services.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return PlayerScope(
-      controller: _player,
-      child: MaterialApp(
-        title: AppInfo.name,
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark(),
-        home: const AppShell(),
+    final s = widget.services;
+    return AppScope(
+      services: s,
+      child: AccountScope(
+        controller: s.account,
+        child: PlayerScope(
+          controller: s.player,
+          child: MaterialApp(
+            title: AppInfo.name,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.dark(),
+            scaffoldMessengerKey: AppScope.messengerKey,
+            home: const AppShell(),
+          ),
+        ),
       ),
     );
   }
+}
+
+/// 提供 [AppServices]，以及全局 SnackBar。
+class AppScope extends InheritedWidget {
+  const AppScope({super.key, required this.services, required super.child});
+
+  final AppServices services;
+
+  static final messengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  static AppServices of(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<AppScope>()!.services;
+
+  /// 在任意位置弹一条提示（包括播放页这种盖在主框架上面的路由）。
+  static void toast(String message) {
+    final m = messengerKey.currentState;
+    if (m == null) return;
+    m
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
+  }
+
+  @override
+  bool updateShouldNotify(AppScope old) => old.services != services;
 }
