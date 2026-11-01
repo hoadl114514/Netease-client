@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 /// 应用内的固定入口。
 enum Destination {
   forYou('为我推荐', '首页', Icons.home_rounded),
-  discover('发现音乐', '发现', Icons.explore_rounded, ready: false),
+  discover('发现音乐', '发现', Icons.explore_rounded),
   podcast('播客电台', '播客', Icons.podcasts_rounded, ready: false),
   liked('我喜欢的音乐', '我喜欢', Icons.favorite_rounded),
-  recent('最近播放', '最近', Icons.history_rounded, ready: false),
-  ranking('听歌排行', '排行', Icons.show_chart_rounded, ready: false),
+  recent('最近播放', '最近', Icons.history_rounded),
+  ranking('听歌排行', '排行', Icons.show_chart_rounded),
   updates('我的动态', '动态', Icons.campaign_outlined, ready: false),
   settings('设置', '设置', Icons.settings_outlined);
 

@@ -32,6 +32,34 @@ class AccountController extends ChangeNotifier {
 
   bool isLiked(String songId) => _liked.contains(songId);
 
+  /// 自己创建的歌单（不含「我喜欢的音乐」），用于「收藏到歌单」。
+  List<Playlist> get ownPlaylists => [
+    for (final p in _playlists)
+      if (!p.isLikedList && p.creatorId == _profile?.userId) p,
+  ];
+
+  /// 是否收藏了别人的歌单 [id]。
+  bool isSubscribed(String id) => _playlists.any((p) => p.id == id && p.subscribed);
+
+  /// 是自己创建的歌单。
+  bool isOwn(Playlist p) => _profile != null && p.creatorId == _profile!.userId;
+
+  /// 收藏 / 取消收藏别人的歌单，成功后刷新歌单列表。
+  Future<void> setSubscribed(Playlist playlist, bool subscribed) async {
+    if (!isLoggedIn) throw const ApiException('登录后才能收藏歌单', code: 301);
+    await _api.setPlaylistSubscribed(playlist.id, subscribed);
+    _playlists = await _api.userPlaylists(_profile!.userId);
+    notifyListeners();
+  }
+
+  /// 把歌加到自己的歌单，成功后刷新歌曲数。
+  Future<void> addToPlaylist(Playlist playlist, Song song) async {
+    if (!isLoggedIn) throw const ApiException('登录后才能收藏到歌单', code: 301);
+    await _api.addToPlaylist(playlist.id, [song.id]);
+    _playlists = await _api.userPlaylists(_profile!.userId);
+    notifyListeners();
+  }
+
   /// 启动时用保存的 Cookie 恢复登录。网络失败时保留 Cookie，下次再试。
   Future<void> restore() async {
     final saved = parseCookie(_settings.cookie);

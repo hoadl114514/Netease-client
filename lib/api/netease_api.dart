@@ -212,6 +212,220 @@ class NeteaseApi {
     'time': '3',
   });
 
+  /// 往自己的歌单里加歌。网易云对这个接口有风控，异常网络环境下会返回 -462。
+  Future<void> addToPlaylist(String playlistId, List<String> songIds) =>
+      _manipulateTracks('add', playlistId, songIds);
+
+  /// 从自己的歌单里删歌。
+  Future<void> removeFromPlaylist(String playlistId, List<String> songIds) =>
+      _manipulateTracks('del', playlistId, songIds);
+
+  Future<void> _manipulateTracks(String op, String playlistId, List<String> songIds) =>
+      _api('https://music.163.com/api/playlist/manipulate/tracks', {
+        'op': op,
+        'pid': playlistId,
+        'trackIds': jsonEncode([for (final id in songIds) int.parse(id)]),
+        'imme': 'true',
+      });
+
+  /// 收藏 / 取消收藏别人的歌单。
+  Future<void> setPlaylistSubscribed(String playlistId, bool subscribed) => _api(
+    'https://music.163.com/api/playlist/${subscribed ? 'subscribe' : 'unsubscribe'}',
+    {'id': playlistId},
+  );
+
+  // ---------------------------------------------------------------- 推荐 / 发现
+
+  /// 每日推荐歌曲（需要登录）。
+  Future<List<Song>> dailySongs() async {
+    final data = await _api('https://music.163.com/api/v3/discovery/recommend/songs', const {});
+    final d = data['data'];
+    return [
+      if (d is Map)
+        for (final s in _list(d['dailySongs'])) ?parseSong(s),
+    ];
+  }
+
+  /// 私人 FM 的下一批（一次约 3 首，需要登录）。
+  Future<List<Song>> personalFm() async {
+    final data = await _api('https://music.163.com/api/v1/radio/get', const {});
+    return [for (final s in _list(data['data'])) ?parseSong(s)];
+  }
+
+  /// 私人 FM 里标记「不喜欢」。
+  Future<void> fmTrash(String songId) => _api(
+    'https://music.163.com/api/radio/trash/add?alg=RT&songId=$songId&time=25',
+    {'songId': songId},
+  );
+
+  /// 推荐歌单。登录后是每日推荐歌单，未登录是通用推荐。
+  Future<List<Playlist>> recommendPlaylists({int limit = 30}) async {
+    if (hasLoginCookie) {
+      final data = await _api(
+        'https://music.163.com/api/v1/discovery/recommend/resource',
+        const {},
+      );
+      final list = [for (final p in _list(data['recommend'])) ?_parseRecommend(p)];
+      if (list.isNotEmpty) return list.take(limit).toList();
+    }
+    final data = await _api('https://music.163.com/api/personalized/playlist', {
+      'limit': '$limit',
+      'total': 'true',
+      'n': '1000',
+    });
+    return [for (final p in _list(data['result'])) ?_parseRecommend(p)];
+  }
+
+  /// 官方排行榜。[Playlist.description] 是更新频率。
+  Future<List<Playlist>> toplists() async {
+    final data = await _api('https://music.163.com/api/toplist', const {});
+    return [for (final p in _list(data['list'])) ?_parsePlaylist(p)];
+  }
+
+  /// 热搜词。
+  Future<List<String>> hotSearches() async {
+    final data = await _api('https://music.163.com/api/hotsearchlist/get', const {});
+    return [
+      for (final h in _list(data['data']))
+        if (h is Map) ?_str(h['searchWord']),
+    ];
+  }
+
+  // ---------------------------------------------------------------- 听歌记录
+
+  /// 听歌排行：[weekly] 为 true 是最近一周，否则是所有时间。
+  Future<List<({Song song, int playCount})>> playRecord(int userId, {bool weekly = true}) async {
+    final data = await _api('https://music.163.com/api/v1/play/record', {
+      'uid': '$userId',
+      'type': weekly ? '1' : '0',
+    });
+    return [
+      for (final r in _list(data[weekly ? 'weekData' : 'allData']))
+        if (r is Map)
+          if (parseSong(r['song']) case final song?) (song: song, playCount: _int(r['playCount'])),
+    ];
+  }
+
+  /// 最近播放的歌曲（需要登录）。
+  Future<List<Song>> recentSongs({int limit = 300}) async {
+    final data = await _api('https://music.163.com/api/play-record/song/list', {'limit': '$limit'});
+    final d = data['data'];
+    return [
+      if (d is Map)
+        for (final r in _list(d['list']))
+          if (r is Map) ?parseSong(r['data']),
+    ];
+  }
+
+  // ---------------------------------------------------------------- 歌手 / 专辑
+
+  /// 歌手信息和热门歌曲（最多 50 首）。
+  Future<({Artist artist, List<Song> hotSongs})> artistDetail(String id) async {
+    final data = await _api('https://music.163.com/api/v1/artist/$id', const {});
+    final a = data['artist'];
+    if (a is! Map) throw const ApiException('歌手不存在');
+    return (
+      artist: _parseArtist(a)!,
+      hotSongs: [for (final s in _list(data['hotSongs'])) ?parseSong(s)],
+    );
+  }
+
+  /// 歌手的专辑，按发行时间从新到旧。
+  Future<({List<Album> albums, bool more})> artistAlbums(
+    String id, {
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final data = await _api('https://music.163.com/api/artist/albums/$id', {
+      'limit': '$limit',
+      'offset': '$offset',
+      'total': 'true',
+    });
+    return (
+      albums: [for (final a in _list(data['hotAlbums'])) ?_parseAlbum(a)],
+      more: data['more'] == true,
+    );
+  }
+
+  /// 专辑信息和曲目。
+  Future<({Album album, List<Song> songs})> album(String id) async {
+    final data = await _api('https://music.163.com/api/v1/album/$id', const {});
+    final album = _parseAlbum(data['album']);
+    if (album == null) throw const ApiException('专辑不存在');
+    // 专辑接口里的歌曲没有带封面，统一补上专辑封面。
+    final songs = [
+      for (final s in _list(data['songs']))
+        if (parseSong(s) case final song?) song.coverUrl == null ? _withCover(song, album) : song,
+    ];
+    return (album: album, songs: songs);
+  }
+
+  static Song _withCover(Song s, Album a) => Song(
+    id: s.id,
+    title: s.title,
+    artist: s.artist,
+    album: s.album.isEmpty ? a.name : s.album,
+    duration: s.duration,
+    coverUrl: a.coverUrl,
+    subtitle: s.subtitle,
+    artists: s.artists,
+    albumId: s.albumId ?? a.id,
+  );
+
+  // ---------------------------------------------------------------- 搜索其他类型
+
+  Future<({List<Playlist> items, int total})> searchPlaylists(
+    String keyword, {
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final r = await _cloudSearch(keyword, 1000, limit, offset);
+    return (
+      items: [for (final p in _list(r['playlists'])) ?_parsePlaylist(p)],
+      total: _int(r['playlistCount']),
+    );
+  }
+
+  Future<({List<Artist> items, int total})> searchArtists(
+    String keyword, {
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final r = await _cloudSearch(keyword, 100, limit, offset);
+    return (
+      items: [for (final a in _list(r['artists'])) ?_parseArtist(a)],
+      total: _int(r['artistCount']),
+    );
+  }
+
+  Future<({List<Album> items, int total})> searchAlbums(
+    String keyword, {
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final r = await _cloudSearch(keyword, 10, limit, offset);
+    return (
+      items: [for (final a in _list(r['albums'])) ?_parseAlbum(a)],
+      total: _int(r['albumCount']),
+    );
+  }
+
+  Future<Map<Object?, Object?>> _cloudSearch(
+    String keyword,
+    int type,
+    int limit,
+    int offset,
+  ) async {
+    final data = await _api('https://music.163.com/api/cloudsearch/pc', {
+      's': keyword,
+      'type': '$type',
+      'limit': '$limit',
+      'offset': '$offset',
+    });
+    final r = data['result'];
+    return r is Map ? r : const {};
+  }
+
   // ---------------------------------------------------------------- 解析
 
   static Song? parseSong(Object? raw) {
@@ -233,6 +447,12 @@ class NeteaseApi {
       duration: Duration(milliseconds: _int(raw['dt'] ?? raw['duration'])),
       coverUrl: album is Map ? _https(_str(album['picUrl'])) : null,
       subtitle: alias.isEmpty ? null : alias.first,
+      artists: [
+        for (final a in artists)
+          if (a is Map && _str(a['name']) != null && _int(a['id']) > 0)
+            ArtistRef('${a['id']}', '${a['name']}'),
+      ],
+      albumId: album is Map && _int(album['id']) > 0 ? '${album['id']}' : null,
     );
   }
 
@@ -246,7 +466,61 @@ class NeteaseApi {
       trackCount: _int(raw['trackCount']),
       coverUrl: _https(_str(raw['coverImgUrl'])),
       creator: creator is Map ? _str(creator['nickname']) : null,
+      creatorId: creator is Map ? _int(creator['userId']) : null,
+      description: _str(raw['updateFrequency']),
+      subscribed: raw['subscribed'] == true,
       isLikedList: _int(raw['specialType']) == 5,
+    );
+  }
+
+  /// 推荐歌单接口的字段名和歌单详情不一样（picUrl / playcount）。
+  static Playlist? _parseRecommend(Object? raw) {
+    if (raw is! Map || raw['id'] == null) return null;
+    final creator = raw['creator'];
+    return Playlist(
+      id: '${raw['id']}',
+      name: '${raw['name'] ?? ''}',
+      playCount: _int(raw['playcount'] ?? raw['playCount']),
+      trackCount: _int(raw['trackCount']),
+      coverUrl: _https(_str(raw['picUrl'])),
+      creator: creator is Map ? _str(creator['nickname']) : null,
+      creatorId: creator is Map ? _int(creator['userId']) : null,
+    );
+  }
+
+  static Artist? _parseArtist(Object? raw) {
+    if (raw is! Map || raw['id'] == null) return null;
+    return Artist(
+      id: '${raw['id']}',
+      name: '${raw['name'] ?? ''}',
+      avatarUrl: _https(_str(raw['img1v1Url']) ?? _str(raw['picUrl'])),
+      description: _str(raw['briefDesc']),
+      songCount: _int(raw['musicSize']),
+      albumCount: _int(raw['albumSize']),
+    );
+  }
+
+  static Album? _parseAlbum(Object? raw) {
+    if (raw is! Map || raw['id'] == null) return null;
+    final artists = _list(raw['artists']);
+    final main = raw['artist'];
+    final names = [
+      for (final a in artists)
+        if (a is Map) ?_str(a['name']),
+    ];
+    final publish = _int(raw['publishTime']);
+    return Album(
+      id: '${raw['id']}',
+      name: '${raw['name'] ?? ''}',
+      artist: names.isNotEmpty
+          ? names.join(' / ')
+          : main is Map
+          ? '${main['name'] ?? ''}'
+          : '',
+      coverUrl: _https(_str(raw['picUrl'])),
+      publishTime: publish > 0 ? DateTime.fromMillisecondsSinceEpoch(publish) : null,
+      size: _int(raw['size']),
+      description: _str(raw['description']) ?? _str(raw['briefDesc']),
     );
   }
 
