@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app.dart';
 import '../app/app_info.dart';
+import '../audio/system_media.dart';
 import '../data/models.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
@@ -50,6 +51,7 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ),
+          const _NotificationTile(),
           const _Header('歌词'),
           ListTile(
             leading: const Icon(Icons.lyrics_outlined),
@@ -84,6 +86,54 @@ class SettingsPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 通知关着时提示去打开：后台播放的媒体通知、控制中心和锁屏卡片都依赖它。
+/// 从系统设置回来时重新检查。
+class _NotificationTile extends StatefulWidget {
+  const _NotificationTile();
+
+  @override
+  State<_NotificationTile> createState() => _NotificationTileState();
+}
+
+class _NotificationTileState extends State<_NotificationTile> with WidgetsBindingObserver {
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+
+  Future<void> _check() async {
+    final enabled = await SystemMediaBridge.notificationsEnabled();
+    if (mounted && enabled != _enabled) setState(() => _enabled = enabled);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_enabled) return const SizedBox.shrink();
+    return const ListTile(
+      leading: Icon(Icons.notifications_off_outlined, color: AppColors.accent),
+      title: Text('通知权限未开启'),
+      subtitle: Text('开启后通知栏、控制中心和锁屏才能显示播放控制'),
+      trailing: Icon(Icons.chevron_right_rounded),
+      onTap: SystemMediaBridge.openNotificationSettings,
     );
   }
 }

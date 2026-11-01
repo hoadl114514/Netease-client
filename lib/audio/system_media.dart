@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/services.dart';
 
 import '../api/netease_api.dart';
 import '../data/models.dart';
@@ -29,6 +32,30 @@ class SystemMediaBridge extends BaseAudioHandler with SeekHandler {
       androidStopForegroundOnPause: false,
     ),
   );
+
+  static const _channel = MethodChannel('netease_client/system_media');
+
+  /// Android 上通知是否开着。关着时媒体通知发不出来，控制中心 / 锁屏看不到播放卡片。
+  /// 其他平台、或者原生端没有实现时视为开着。
+  static Future<bool> notificationsEnabled() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _channel.invokeMethod<bool>('notificationsEnabled') ?? true;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException {
+      return true;
+    }
+  }
+
+  /// 打开本应用的系统通知设置。
+  static Future<void> openNotificationSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openNotificationSettings');
+    } on MissingPluginException {
+      // 非 Android。
+    }
+  }
 
   String? _songId;
   ({bool playing, bool loading, int index, AudioQuality? quality})? _last;
