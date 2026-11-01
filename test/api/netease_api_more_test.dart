@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:netease_client/api/cookies.dart';
+import 'package:netease_client/api/eapi_crypto.dart';
 import 'package:netease_client/api/netease_api.dart';
 import 'package:netease_client/data/models.dart';
 
@@ -454,17 +456,45 @@ void main() {
     expect(c?.id, 99);
   });
 
-  test('scrobble sends a play log with listened seconds and source', () async {
+  test('scrobble sends startplay then play logs to clientlog as the macOS client', () async {
     final seen = <http.Request>[];
-    final api = apiWith({
-      '/feedback/weblog': {'code': 200, 'data': 'success'},
-    }, seen: seen);
+    final api = apiWith(
+      {
+        '/feedback/weblog': {'code': 200, 'data': 'success'},
+      },
+      seen: seen,
+      cookies: {'MUSIC_U': 'u', '__csrf': 'c'},
+    );
+    await api.startPlay('42', sourceId: 'pl1');
     await api.scrobble('42', seconds: 95, sourceId: 'pl1');
-    final logs = jsonDecode(seen.single.bodyFields['logs']!) as List;
-    final json = (logs.single as Map)['json'] as Map;
-    expect((logs.single as Map)['action'], 'play');
+    expect(seen, hasLength(2));
+    for (final r in seen) {
+      expect(r.url.toString(), 'https://clientlog.music.163.com/eapi/feedback/weblog');
+      expect(r.headers['Cookie'], allOf(contains('os=osx'), contains('MUSIC_U=u')));
+    }
+    // 解出 EAPI 请求体里的 JSON。
+    Map<String, Object?> payload(http.Request r) {
+      final hex = r.bodyFields['params']!;
+      final bytes = Uint8List.fromList([
+        for (var i = 0; i < hex.length; i += 2) int.parse(hex.substring(i, i + 2), radix: 16),
+      ]);
+      final plain = EapiCrypto.decrypt(bytes).split('-36cd479b6b5-');
+      expect(plain.first, '/api/feedback/weblog');
+      return jsonDecode(plain[1]) as Map<String, Object?>;
+    }
+
+    Map<Object?, Object?> log(http.Request r) =>
+        (jsonDecode(payload(r)['logs']! as String) as List).single as Map;
+    expect(log(seen[0])['action'], 'startplay');
+    expect((log(seen[0])['json'] as Map)['content'], 'id=pl1');
+    final play = log(seen[1]);
+    expect(play['action'], 'play');
+    final json = play['json'] as Map;
     expect(json['id'], 42);
     expect(json['time'], 95);
     expect(json['sourceId'], 'pl1');
+    final header = jsonDecode(payload(seen[1])['header']! as String) as Map;
+    expect(header['os'], 'osx');
+    expect(header['MUSIC_U'], 'u');
   });
 }

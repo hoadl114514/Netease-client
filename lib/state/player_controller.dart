@@ -16,7 +16,10 @@ abstract class PlaybackBackend {
   Future<SongUrl?> songUrl(String songId, AudioQuality quality);
   Future<Lyrics> lyrics(Song song, LyricSource source, {required bool fallback});
 
-  /// 上报一次播放（同步到网易云的最近播放）。未登录时什么都不做。
+  /// 开始放一首歌：同步到网易云的「最近播放」。未登录时什么都不做。
+  Future<void> startPlay(Song song, {String? sourceId});
+
+  /// 听够了一首歌：给网易云的听歌排行计数。未登录时什么都不做。
   Future<void> scrobble(Song song, {required Duration listened, String? sourceId});
 }
 
@@ -35,6 +38,12 @@ class NeteaseBackend implements PlaybackBackend {
   @override
   Future<Lyrics> lyrics(Song song, LyricSource source, {required bool fallback}) =>
       _lyrics.fetch(song, source, fallback: fallback);
+
+  @override
+  Future<void> startPlay(Song song, {String? sourceId}) async {
+    if (!_api.hasLoginCookie) return;
+    await _api.startPlay(song.id, sourceId: sourceId);
+  }
 
   @override
   Future<void> scrobble(Song song, {required Duration listened, String? sourceId}) async {
@@ -73,8 +82,14 @@ class PlayerController extends ChangeNotifier {
 
   /// 当前这首实际听了多久（拖动进度不算），换歌时用来判断要不要上报。
   Duration _listened = Duration.zero;
+
+  /// 已经报过「开始播放」的那首（每次换到一首歌只报一次）。
+  int _startReportedToken = -1;
   int _index = -1;
   int _token = 0;
+
+  /// 每换到一首歌（或单曲循环重放）递增，用来判断「开始播放」是否已上报。
+  int _songToken = 0;
 
   Duration _position = Duration.zero;
   bool _playing = false;
@@ -297,6 +312,8 @@ class PlayerController extends ChangeNotifier {
   Future<void> _advance({required bool auto}) async {
     if (_queue.isEmpty) return;
     if (auto && _repeat == Repeat.one) {
+      _songToken++;
+      _reportStart();
       return seek(Duration.zero).then((_) => play());
     }
     // 无尽队列放到最后一首：先取下一批，取到了就顺着放下去。
@@ -330,7 +347,10 @@ class PlayerController extends ChangeNotifier {
     final token = ++_token;
     _wantPlay = autoplay ?? true;
     final changingSong = index != _index;
-    if (changingSong) _reportListened();
+    if (changingSong) {
+      _reportListened();
+      _songToken++;
+    }
     _index = index;
     final song = this.song;
     _position = startAt;
@@ -444,6 +464,14 @@ class PlayerController extends ChangeNotifier {
 
   static const _scrobbleAfter = Duration(seconds: 30);
 
+  /// 这首歌第一次真正开始播放时报给网易云，让它进「最近播放」。
+  void _reportStart() {
+    final song = current;
+    if (song == null || _startReportedToken == _songToken || !_settings.syncRecentPlays) return;
+    _startReportedToken = _songToken;
+    unawaited(_backend.startPlay(song, sourceId: _sourceId).catchError((Object _) {}));
+  }
+
   void _fail(String message) {
     _loading = false;
     _playing = false;
@@ -466,6 +494,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _startPlayback() async {
+    _reportStart();
     _playing = true;
     await _engine.play();
     _startTicker();
