@@ -74,49 +74,6 @@ class _TrackListViewState extends State<TrackListView> {
       PlayerScope.read(context)
           .playQueue(tracks, start: i, title: widget.queueTitle, sourceId: widget.sourceId);
 
-  Widget _searchField(int total, int? matched) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: TextField(
-        controller: _search,
-        onChanged: (v) => setState(() => _query = v.trim()),
-        textInputAction: TextInputAction.search,
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          isDense: true,
-          filled: true,
-          fillColor: AppColors.surfaceHigh,
-          hintText: '搜索列表内 $total 首歌曲',
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          suffixIcon: _query.isEmpty
-              ? null
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${matched ?? 0} 首',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                    ),
-                    IconButton(
-                      tooltip: '清空',
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      onPressed: () {
-                        _search.clear();
-                        setState(() => _query = '');
-                      },
-                    ),
-                  ],
-                ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Song>>(
@@ -145,7 +102,14 @@ class _TrackListViewState extends State<TrackListView> {
                 ),
               ),
               if (widget.searchable && loaded && tracks.isNotEmpty)
-                SliverToBoxAdapter(child: _searchField(tracks.length, shown?.length)),
+                SliverToBoxAdapter(
+                  child: ListSearchField(
+                    controller: _search,
+                    hint: '搜索列表内 ${tracks.length} 首歌曲',
+                    matched: shown?.length,
+                    onChanged: (v) => setState(() => _query = v.trim()),
+                  ),
+                ),
               if (snap.connectionState != ConnectionState.done)
                 const SliverFillRemaining(
                   hasScrollBody: false,
@@ -193,6 +157,67 @@ class _TrackListViewState extends State<TrackListView> {
           ),
         );
       },
+    );
+  }
+}
+
+/// 列表上方的搜索框。[matched] 不为 null 时在右侧显示匹配数和清空按钮。
+class ListSearchField extends StatelessWidget {
+  const ListSearchField({
+    super.key,
+    required this.controller,
+    required this.hint,
+    required this.onChanged,
+    this.matched,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final int? matched;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = matched;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: AppColors.surfaceHigh,
+          hintText: hint,
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          suffixIcon: m == null
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$m 个结果',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                    IconButton(
+                      tooltip: '清空',
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () {
+                        controller.clear();
+                        onChanged('');
+                      },
+                    ),
+                  ],
+                ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
     );
   }
 }

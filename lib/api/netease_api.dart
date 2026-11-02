@@ -552,16 +552,16 @@ class NeteaseApi {
     );
   }
 
-  /// 歌手的全部歌曲，按发行时间从新到旧。接口单页最多 100 首（再大会返回别人的歌），
-  /// 先取第一页拿到总数，剩下的几页并发取。
-  Future<List<Song>> artistAllSongs(String id, {int maxSongs = 3000}) async {
+  /// 歌手的全部歌曲：[byTime] 为 true 按发行时间从新到旧，否则按热度。
+  /// 接口单页最多 100 首（再大会返回别人的歌），先取第一页拿到总数，剩下的几页并发取。
+  Future<List<Song>> artistAllSongs(String id, {bool byTime = true, int maxSongs = 3000}) async {
     const page = 100;
     Future<({List<Song> songs, int total})> fetch(int offset) async {
       final data = await _api('https://music.163.com/api/v1/artist/songs', {
         'id': id,
         'offset': '$offset',
         'limit': '$page',
-        'order': 'time',
+        'order': byTime ? 'time' : 'hot',
         'private_cloud': 'true',
         'work_type': '1',
       });
@@ -585,6 +585,16 @@ class NeteaseApi {
       for (final s in [...first.songs, for (final r in rest) ...r])
         // 防御：只留这位歌手参与的歌，并去重。
         if ((s.artists.isEmpty || s.artists.any((a) => a.id == id)) && seen.add(s.id)) s,
+    ];
+  }
+
+  /// 歌手的详细介绍，分段（标题 + 正文）。
+  Future<List<({String title, String text})>> artistIntroduction(String id) async {
+    final data = await _api('https://music.163.com/api/artist/introduction', {'id': id});
+    return [
+      for (final e in _list(data['introduction']))
+        if (e is Map && _str(e['txt']) != null)
+          (title: _str(e['ti']) ?? '', text: (e['txt'] as String).trim()),
     ];
   }
 

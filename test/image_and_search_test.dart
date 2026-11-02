@@ -8,6 +8,7 @@ import 'package:netease_client/api/netease_api.dart';
 import 'package:netease_client/app/app.dart';
 import 'package:netease_client/data/models.dart';
 import 'package:netease_client/pages/library/track_list_view.dart';
+import 'package:netease_client/pages/music/artist_page.dart';
 import 'package:netease_client/state/player_controller.dart';
 import 'package:netease_client/widgets/image_viewer.dart';
 
@@ -113,6 +114,35 @@ void main() {
       expect(songs.any((s) => s.id == '6'), isFalse);
     });
 
+    test('artistAllSongs can sort by popularity; introduction is parsed', () async {
+      final seen = <Map<String, String>>[];
+      final api = NeteaseApi(
+        client: MockClient((r) async {
+          seen.add(r.bodyFields);
+          if (r.url.path.endsWith('/introduction')) {
+            return _json({
+              'code': 200,
+              'introduction': [
+                {'ti': '早年经历', 'txt': ' 第一段 '},
+                {'ti': '空的', 'txt': ''},
+              ],
+            });
+          }
+          return _json({
+            'code': 200,
+            'total': 1,
+            'songs': [_song(1)],
+          });
+        }),
+      );
+      await api.artistAllSongs('7', byTime: false);
+      expect(seen.single['order'], 'hot');
+      final intro = await api.artistIntroduction('7');
+      expect(intro, hasLength(1));
+      expect(intro.single.title, '早年经历');
+      expect(intro.single.text, '第一段');
+    });
+
     test('searchSuggest fills song covers, album covers and artist avatars', () async {
       final api = NeteaseApi(
         client: MockClient((r) async {
@@ -169,6 +199,13 @@ void main() {
       expect(songMatches(s, 'hello 林俊杰'), isFalse);
     });
 
+    test('albumMatches checks name, artist and year', () {
+      final a = Album(id: '1', name: '叶惠美', artist: '周杰伦', publishTime: DateTime(2003, 7, 31));
+      expect(albumMatches(a, '叶惠'), isTrue);
+      expect(albumMatches(a, '周杰伦 2003'), isTrue);
+      expect(albumMatches(a, '范特西'), isFalse);
+    });
+
     testWidgets('filtering keeps original numbering and plays the full list', (tester) async {
       final f = await fakeServices();
       final songs = [_s('1', '晴天'), _s('2', '七里香'), _s('3', '晴天娃娃')];
@@ -197,7 +234,7 @@ void main() {
       expect(find.text('七里香'), findsNothing);
       expect(find.text('晴天娃娃'), findsOneWidget);
       expect(find.text('3'), findsOneWidget); // 序号仍是原来的第 3 首。
-      expect(find.text('1 首'), findsOneWidget);
+      expect(find.text('1 个结果'), findsOneWidget);
 
       await tester.tap(find.text('晴天娃娃'));
       await tester.pumpAndSettle();
