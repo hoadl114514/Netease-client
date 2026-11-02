@@ -539,6 +539,30 @@ class NeteaseApi {
     {'threadId': threadId, 'commentId': '$commentId'},
   );
 
+  // ---------------------------------------------------------------- 用户
+
+  /// 用户主页资料。这个接口用 GET 会被风控（-462），要用 POST。
+  Future<UserDetail> userDetail(int userId) async {
+    final data = await _api('https://music.163.com/api/v1/user/detail/$userId', const {});
+    final p = data['profile'];
+    if (p is! Map) throw const ApiException('用户不存在');
+    final artistId = _int(p['artistId']);
+    return UserDetail(
+      userId: _int(p['userId']),
+      nickname: '${p['nickname'] ?? ''}',
+      avatarUrl: _https(_str(p['avatarUrl'])),
+      backgroundUrl: _https(_str(p['backgroundUrl'])),
+      signature: _str('${p['signature'] ?? ''}'.trim()),
+      identity: _str(p['description']) ?? _str(p['detailDescription']),
+      level: _int(data['level']),
+      listenSongs: _int(data['listenSongs']),
+      follows: _int(p['follows']),
+      followeds: _int(p['followeds']),
+      artistId: artistId > 0 ? '$artistId' : null,
+      playRecordPublic: data['peopleCanSeeMyPlayRecord'] != false,
+    );
+  }
+
   // ---------------------------------------------------------------- 歌手 / 专辑
 
   /// 歌手信息和热门歌曲（最多 50 首）。
@@ -806,6 +830,7 @@ class NeteaseApi {
       description: _str(raw['briefDesc']),
       songCount: _int(raw['musicSize']),
       albumCount: _int(raw['albumSize']),
+      accountId: _int(raw['accountId']) > 0 ? _int(raw['accountId']) : null,
     );
   }
 

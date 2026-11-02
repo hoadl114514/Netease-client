@@ -174,7 +174,7 @@ class _Results extends StatelessWidget {
                   key: ValueKey('playlist:$k'),
                   noun: '歌单',
                   fetch: (offset) => api.searchPlaylists(k, limit: _pageSize, offset: offset),
-                  itemBuilder: (context, items, i) => _PlaylistTile(playlist: items[i]),
+                  itemBuilder: (context, items, i) => PlaylistTile(playlist: items[i]),
                 ),
                 _PagedResults<Artist>(
                   key: ValueKey('artist:$k'),
@@ -552,41 +552,6 @@ class _PagedResultsState<T> extends State<_PagedResults<T>> with AutomaticKeepAl
           );
         },
       ),
-    );
-  }
-}
-
-class _PlaylistTile extends StatelessWidget {
-  const _PlaylistTile({required this.playlist});
-
-  final Playlist playlist;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = playlist;
-    return ListTile(
-      leading: SizedBox(
-        width: 52,
-        child: ViewableImage(
-          url: p.coverUrl,
-          title: p.name,
-          child: CoverArt(
-            palette: p.palette,
-            seed: p.id,
-            imageUrl: p.coverUrl,
-            fallbackImage: playlistCoverFallback(context, p),
-            radius: 6,
-          ),
-        ),
-      ),
-      title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        ['${p.trackCount} 首', ?p.creator].join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: AppColors.textSecondary),
-      ),
-      onTap: () => SubPage.push(context, PlaylistPage(playlist: p)),
     );
   }
 }

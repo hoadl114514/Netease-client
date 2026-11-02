@@ -6,15 +6,22 @@ import '../../state/account_controller.dart';
 import '../library/track_list_view.dart';
 import '../login_page.dart';
 
-/// 听歌排行：最近一周 / 所有时间。
+/// 听歌排行：最近一周 / 所有时间。[userId] 为空时看自己的（需要登录），否则看别人的（用户主页进入）。
 class RankingPage extends StatelessWidget {
-  const RankingPage({super.key});
+  const RankingPage({super.key, this.userId});
+
+  final int? userId;
 
   @override
   Widget build(BuildContext context) {
     final account = AccountScope.of(context);
-    if (!account.isLoggedIn) return const LoginPrompt(message: '登录后查看听歌排行');
-    final uid = account.profile!.userId;
+    final int uid;
+    if (userId case final id?) {
+      uid = id;
+    } else {
+      if (!account.isLoggedIn) return const LoginPrompt(message: '登录后查看听歌排行');
+      uid = account.profile!.userId;
+    }
     return DefaultTabController(
       length: 2,
       child: Column(

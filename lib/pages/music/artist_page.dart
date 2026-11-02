@@ -10,100 +10,17 @@ import '../../widgets/image_viewer.dart';
 import '../library/track_list_view.dart';
 import 'nav.dart';
 
-/// 歌手页：三个标签，热门歌曲（带可展开的简介）、全部歌曲（按热度或发行时间）和专辑（可搜索）。
-class ArtistPage extends StatelessWidget {
-  const ArtistPage({super.key, required this.artist});
+/// 歌手的全部歌曲（用户主页的标签），可按热度或发行时间排序。
+class ArtistAllSongs extends StatefulWidget {
+  const ArtistAllSongs({super.key, required this.artist});
 
   final ArtistRef artist;
 
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: SubPage(
-        title: artist.name,
-        body: Column(
-          children: [
-            const TabBar(
-              tabs: [
-                Tab(text: '热门歌曲'),
-                Tab(text: '全部歌曲'),
-                Tab(text: '专辑'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _HotSongs(artist: artist),
-                  _AllSongs(artist: artist),
-                  _Albums(artist: artist),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  State<ArtistAllSongs> createState() => _ArtistAllSongsState();
 }
 
-class _HotSongs extends StatefulWidget {
-  const _HotSongs({required this.artist});
-
-  final ArtistRef artist;
-
-  @override
-  State<_HotSongs> createState() => _HotSongsState();
-}
-
-class _HotSongsState extends State<_HotSongs> with AutomaticKeepAliveClientMixin {
-  Artist? _info;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  Future<List<Song>> _load() async {
-    final r = await AppScope.of(context).api.artistDetail(widget.artist.id);
-    if (mounted) setState(() => _info = r.artist);
-    return r.hotSongs;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final a = _info;
-    return TrackListView(
-      load: _load,
-      queueTitle: '${widget.artist.name} 热门歌曲',
-      header: (context, tracks, playAll) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          CollectionHeader(
-            title: a?.name ?? widget.artist.name,
-            seed: widget.artist.id,
-            coverUrl: a?.avatarUrl,
-            icon: Icons.person_rounded,
-            circular: true,
-            lines: [if (a != null) '单曲 ${a.songCount} · 专辑 ${a.albumCount}'],
-            onPlayAll: playAll,
-          ),
-          if (a?.description case final d?) ArtistIntro(artistId: widget.artist.id, brief: d),
-        ],
-      ),
-    );
-  }
-}
-
-class _AllSongs extends StatefulWidget {
-  const _AllSongs({required this.artist});
-
-  final ArtistRef artist;
-
-  @override
-  State<_AllSongs> createState() => _AllSongsState();
-}
-
-class _AllSongsState extends State<_AllSongs> with AutomaticKeepAliveClientMixin {
+class _ArtistAllSongsState extends State<ArtistAllSongs> with AutomaticKeepAliveClientMixin {
   /// true 按发行时间从新到旧，false 按热度。
   bool _byTime = true;
 
@@ -161,16 +78,17 @@ class _AllSongsState extends State<_AllSongs> with AutomaticKeepAliveClientMixin
   }
 }
 
-class _Albums extends StatefulWidget {
-  const _Albums({required this.artist});
+/// 歌手的专辑（用户主页的标签），可搜索。
+class ArtistAlbums extends StatefulWidget {
+  const ArtistAlbums({super.key, required this.artist});
 
   final ArtistRef artist;
 
   @override
-  State<_Albums> createState() => _AlbumsState();
+  State<ArtistAlbums> createState() => _ArtistAlbumsState();
 }
 
-class _AlbumsState extends State<_Albums> with AutomaticKeepAliveClientMixin {
+class _ArtistAlbumsState extends State<ArtistAlbums> with AutomaticKeepAliveClientMixin {
   static const _pageSize = 30;
 
   final List<Album> _albums = [];

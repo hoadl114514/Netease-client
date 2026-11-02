@@ -242,6 +242,7 @@ class CollectionHeader extends StatelessWidget {
     this.onPlayAll,
     this.actions = const [],
     this.circular = false,
+    this.link,
   });
 
   final String title;
@@ -260,6 +261,9 @@ class CollectionHeader extends StatelessWidget {
 
   /// 圆形头像（歌手页）。
   final bool circular;
+
+  /// 标题下面一行可以点的文字，例如歌单创建者（点了进用户主页）。
+  final ({String text, VoidCallback onTap})? link;
 
   @override
   Widget build(BuildContext context) {
@@ -295,6 +299,30 @@ class CollectionHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
+                if (link case final l?) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: l.onTap,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            l.text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 for (final l in lines) ...[
                   const SizedBox(height: 4),
                   Text(

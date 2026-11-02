@@ -5,6 +5,7 @@ import '../../data/format.dart';
 import '../../data/models.dart';
 import '../../state/account_controller.dart';
 import '../comments/comments_page.dart';
+import '../music/nav.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/playlist_card.dart';
 import 'track_list_view.dart';
@@ -33,8 +34,16 @@ class PlaylistView extends StatelessWidget {
         coverUrl: p.coverUrl ?? tracks.where((t) => t.coverUrl != null).firstOrNull?.coverUrl,
         fallbackCover: playlistCoverFallback(context, p),
         palette: p.palette,
+        // 有创建者 id 时创建者单独一行，点了进 TA 的主页。
+        link: p.creator != null && (p.creatorId ?? 0) > 0
+            ? (text: p.creator!, onTap: () => openUser(context, p.creatorId!, name: p.creator))
+            : null,
         lines: [
-          [?p.creator, '${p.trackCount} 首', '播放 ${formatPlayCount(p.playCount)}'].join(' · '),
+          [
+            if ((p.creatorId ?? 0) <= 0) ?p.creator,
+            '${p.trackCount} 首',
+            '播放 ${formatPlayCount(p.playCount)}',
+          ].join(' · '),
           ?p.description,
         ],
         onPlayAll: playAll,

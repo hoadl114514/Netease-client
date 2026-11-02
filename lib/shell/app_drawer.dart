@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../pages/login_page.dart';
+import '../pages/music/nav.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dev_badge.dart';
@@ -62,7 +63,12 @@ class _AccountCard extends StatelessWidget {
       child: Column(
         children: [
           InkWell(
-            onTap: profile == null ? login : () => showNotReady('个人主页'),
+            onTap: profile == null
+                ? login
+                : () {
+                    Navigator.of(context).pop();
+                    openUser(context, profile.userId, name: profile.nickname);
+                  },
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -179,6 +185,7 @@ class _StatusRowState extends State<_StatusRow> {
           captionColor: AppColors.textMuted,
         ),
         const SizedBox(width: 16),
+        // TODO(用户主页): 添加好友做好后，搜到的用户点进用户主页（openUser）。
         _RoundEntry(
           onTap: () => showNotReady('添加好友'),
           circle: Container(
@@ -249,6 +256,7 @@ class _Messages extends StatelessWidget {
               const SizedBox(width: 8),
               const DevBadge(),
               const Spacer(),
+              // TODO(用户主页): 私信做好后，用户主页的「私信」按钮直接打开和对方的对话。
               IconButton(
                 onPressed: () => showNotReady('私信'),
                 tooltip: '写私信',

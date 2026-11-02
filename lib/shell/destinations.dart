@@ -8,6 +8,7 @@ enum Destination {
   liked('我喜欢的音乐', '我喜欢', Icons.favorite_rounded),
   recent('最近播放', '最近', Icons.history_rounded),
   ranking('听歌排行', '排行', Icons.show_chart_rounded),
+  // TODO(用户主页): 动态做好后，用户主页也加一个「动态」标签显示 TA 的动态。
   updates('我的动态', '动态', Icons.campaign_outlined, ready: false),
   settings('设置', '设置', Icons.settings_outlined);
 
