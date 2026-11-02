@@ -21,3 +21,12 @@ QRC 解密（QQ 修改版三重 DES + zlib）以及 QRC 时间语义，改编自
 
 `lib/api/eapi_crypto.dart` 与 `lib/api/netease_api.dart` 中的 EAPI 加密格式和播放地址接口参数参考了
 [Suxiaoqinx/Netease_url](https://github.com/Suxiaoqinx/Netease_url)（MIT License，Copyright (c) 2024 Suxiaoqinx）。
+
+## NeteaseCloudMusicApiEnhanced
+
+`lib/api/xeapi_crypto.dart` 中的 XEAPI 加密（公钥注册、请求封装、响应解密）和
+`lib/api/netease_api.dart` 中走 XEAPI 取播放地址的请求头、Cookie 字段，参照
+[NeteaseCloudMusicApiEnhanced/api-enhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)
+（MIT License，Copyright (c) 2013-2022 Binaryify）的 `util/crypto.js`、`util/request.js`、
+`module/register_xeapikey.js` 与 `module/song_url_v1.js` 移植。
+参考提交：984cc02

@@ -118,7 +118,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                   ),
                 ),
                 // 控制区离底部留够距离，单手拇指更好按。
-                const SizedBox(height: 40),
+                const SizedBox(height: 56),
               ],
             ),
           ),
