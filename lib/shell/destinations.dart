@@ -4,18 +4,14 @@ import 'package:flutter/material.dart';
 enum Destination {
   forYou('为我推荐', '首页', Icons.home_rounded),
   discover('发现音乐', '发现', Icons.explore_rounded),
-  podcast('播客电台', '播客', Icons.podcasts_rounded, ready: false),
+  follow('关注', '关注', Icons.people_alt_rounded),
   liked('我喜欢的音乐', '我喜欢', Icons.favorite_rounded),
   recent('最近播放', '最近', Icons.history_rounded),
   ranking('听歌排行', '排行', Icons.show_chart_rounded),
-  // TODO(用户主页): 动态做好后，用户主页也加一个「动态」标签显示 TA 的动态。
-  updates('我的动态', '动态', Icons.campaign_outlined, ready: false),
+  updates('我的动态', '动态', Icons.campaign_outlined),
   settings('设置', '设置', Icons.settings_outlined);
 
-  const Destination(this.label, this.shortLabel, this.icon, {this.ready = true});
-
-  /// false 表示页面待开发。
-  final bool ready;
+  const Destination(this.label, this.shortLabel, this.icon);
 
   /// 页面标题。
   final String label;
@@ -25,7 +21,7 @@ enum Destination {
   final IconData icon;
 
   /// 底部导航。
-  static const tabs = [forYou, discover, podcast, liked];
+  static const tabs = [forYou, discover, follow, liked];
 
   /// 抽屉侧栏里的菜单。
   static const drawer = [ranking, recent, updates, settings];

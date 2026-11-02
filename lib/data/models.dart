@@ -140,6 +140,7 @@ class UserDetail {
     this.followeds = 0,
     this.artistId,
     this.playRecordPublic = true,
+    this.followed = false,
   });
 
   final int userId;
@@ -164,6 +165,9 @@ class UserDetail {
 
   /// 是否公开听歌排行。
   final bool playRecordPublic;
+
+  /// 我是否已关注 TA（登录后才有意义）。
+  final bool followed;
 }
 
 class Album {
@@ -358,7 +362,10 @@ class Lyrics {
 enum CommentTarget {
   song('R_SO_4_'),
   playlist('A_PL_0_'),
-  album('R_AL_3_');
+  album('R_AL_3_'),
+
+  /// 动态的评论区 id 是 `A_EV_2_动态id_作者id`，所以这里的 id 传 `动态id_作者id`。
+  event('A_EV_2_');
 
   const CommentTarget(this.prefix);
 
@@ -459,4 +466,203 @@ List<Color> fallbackPalette(String seed) {
     h = (h * 31 + c) & 0x7fffffff;
   }
   return palettes[h % palettes.length];
+}
+
+// ---------------------------------------------------------------- 社交
+
+/// 关注 / 粉丝列表、私信、动态里出现的用户。
+class SocialUser {
+  const SocialUser({
+    required this.userId,
+    required this.nickname,
+    this.avatarUrl,
+    this.signature,
+    this.followed = false,
+    this.mutual = false,
+    this.musician = false,
+    this.followeds = 0,
+  });
+
+  final int userId;
+  final String nickname;
+  final String? avatarUrl;
+  final String? signature;
+
+  /// 我是否关注了 TA（未登录时总是 false）。
+  final bool followed;
+
+  /// 互相关注。
+  final bool mutual;
+
+  /// 音乐人 / 认证艺人。「关注」页的「音乐人」「朋友」按这个分。
+  final bool musician;
+
+  /// 粉丝数。
+  final int followeds;
+
+  SocialUser copyWith({bool? followed}) => SocialUser(
+    userId: userId,
+    nickname: nickname,
+    avatarUrl: avatarUrl,
+    signature: signature,
+    followed: followed ?? this.followed,
+    mutual: mutual,
+    musician: musician,
+    followeds: followeds,
+  );
+}
+
+/// 一页用户（关注 / 粉丝）。
+class SocialUserPage {
+  const SocialUserPage({required this.users, required this.more, this.cursor});
+
+  final List<SocialUser> users;
+  final bool more;
+
+  /// 下一页的游标；按 offset 翻页的接口为 null。
+  final String? cursor;
+}
+
+/// 一条动态。转发的动态（[forwarded] 不为空）正文是转发语，被转发的内容在 [forwarded] 里。
+class UserEvent {
+  const UserEvent({
+    required this.id,
+    required this.user,
+    required this.time,
+    required this.type,
+    this.text = '',
+    this.title,
+    this.pics = const [],
+    this.song,
+    this.playlist,
+    this.album,
+    this.forwarded,
+    this.threadId,
+    this.likedCount = 0,
+    this.liked = false,
+    this.commentCount = 0,
+    this.shareCount = 0,
+  });
+
+  final int id;
+  final SocialUser user;
+  final DateTime time;
+
+  /// 接口里的动态类型：18 分享单曲、13 分享歌单、19 分享专辑、22 转发……
+  final int type;
+  final String text;
+  final String? title;
+
+  /// 配图（原图地址）。
+  final List<String> pics;
+  final Song? song;
+  final Playlist? playlist;
+  final Album? album;
+  final UserEvent? forwarded;
+
+  /// 评论区 id（`A_EV_2_…`），也用来点赞。
+  final String? threadId;
+  final int likedCount;
+  final bool liked;
+  final int commentCount;
+  final int shareCount;
+
+  /// 「分享单曲」这类动作说明，普通动态为 null。
+  String? get action => switch (type) {
+    18 => '分享单曲',
+    19 => '分享专辑',
+    13 => '分享歌单',
+    17 || 28 => '分享节目',
+    22 => '转发',
+    24 => '分享专栏文章',
+    21 || 39 || 41 => '分享视频',
+    _ => null,
+  };
+
+  UserEvent copyWith({bool? liked, int? likedCount}) => UserEvent(
+    id: id,
+    user: user,
+    time: time,
+    type: type,
+    text: text,
+    title: title,
+    pics: pics,
+    song: song,
+    playlist: playlist,
+    album: album,
+    forwarded: forwarded,
+    threadId: threadId,
+    likedCount: likedCount ?? this.likedCount,
+    liked: liked ?? this.liked,
+    commentCount: commentCount,
+    shareCount: shareCount,
+  );
+}
+
+/// 一页动态。下一页传 [lasttime]。
+class EventPage {
+  const EventPage({required this.events, required this.more, required this.lasttime});
+
+  final List<UserEvent> events;
+  final bool more;
+  final int lasttime;
+}
+
+/// 私信列表里的一个会话。
+class Conversation {
+  const Conversation({
+    required this.user,
+    required this.preview,
+    required this.time,
+    this.unread = 0,
+  });
+
+  final SocialUser user;
+
+  /// 最后一条消息的摘要。
+  final String preview;
+  final DateTime time;
+  final int unread;
+}
+
+/// 一条私信。分享歌曲 / 歌单 / 专辑时带上对应资源。
+class PrivateMessage {
+  const PrivateMessage({
+    required this.id,
+    required this.fromUserId,
+    required this.time,
+    this.text = '',
+    this.song,
+    this.playlist,
+    this.album,
+    this.imageUrl,
+  });
+
+  final int id;
+  final int fromUserId;
+  final DateTime time;
+  final String text;
+  final Song? song;
+  final Playlist? playlist;
+  final Album? album;
+  final String? imageUrl;
+}
+
+/// 一页私信记录，[messages] 按时间从旧到新。
+class MessageHistory {
+  const MessageHistory({required this.messages, required this.more});
+
+  final List<PrivateMessage> messages;
+  final bool more;
+}
+
+/// 「我的关注」的筛选：全部、音乐人、普通用户。顺序即接口里的 scene。
+enum FollowScene {
+  all('全部'),
+  musicians('音乐人'),
+  friends('朋友');
+
+  const FollowScene(this.label);
+
+  final String label;
 }

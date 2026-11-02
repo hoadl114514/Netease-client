@@ -560,8 +560,139 @@ class NeteaseApi {
       followeds: _int(p['followeds']),
       artistId: artistId > 0 ? '$artistId' : null,
       playRecordPublic: data['peopleCanSeeMyPlayRecord'] != false,
+      followed: p['followed'] == true,
     );
   }
+
+  // ---------------------------------------------------------------- 关注 / 粉丝
+
+  /// 关注 / 取消关注（需要登录）。明文接口被风控时换 EAPI 再试一次（关注是幂等的）。
+  Future<void> setFollowed(int userId, bool follow) async {
+    final path = '/api/user/${follow ? 'follow' : 'delfollow'}/$userId';
+    try {
+      await _api('https://music.163.com$path', const {});
+    } on ApiException catch (e) {
+      if (e.needsLogin) rethrow;
+      await _eapi(path, const {});
+    }
+  }
+
+  /// [userId] 关注的人，按 offset 翻页。
+  Future<SocialUserPage> userFollows(int userId, {int offset = 0, int limit = 30}) async {
+    final data = await _api('https://music.163.com/api/user/getfollows/$userId', {
+      'offset': '$offset',
+      'limit': '$limit',
+      'order': 'true',
+    });
+    return SocialUserPage(
+      users: [for (final u in _list(data['follow'])) ?parseSocialUser(u)],
+      more: data['more'] == true,
+    );
+  }
+
+  /// [userId] 的粉丝，按 offset 翻页。
+  Future<SocialUserPage> userFolloweds(int userId, {int offset = 0, int limit = 30}) async {
+    final data = await _eapi('/api/user/getfolloweds/$userId', {
+      'userId': '$userId',
+      'time': '0',
+      'limit': '$limit',
+      'offset': '$offset',
+      'getcounts': 'true',
+    });
+    return SocialUserPage(
+      users: [for (final u in _list(data['followeds'])) ?parseSocialUser(u)],
+      more: data['more'] == true,
+    );
+  }
+
+  // ---------------------------------------------------------------- 动态
+
+  /// 关注的人的动态（「关注」页，需要登录）。下一页传上一页的 [EventPage.lasttime]。
+  Future<EventPage> followFeed({int lasttime = -1, int limit = 20}) async {
+    final data = await _api('https://music.163.com/api/v1/event/get', {
+      'pagesize': '$limit',
+      'lasttime': '$lasttime',
+    });
+    return _eventPage(data);
+  }
+
+  /// [userId] 发的动态。
+  Future<EventPage> userEvents(int userId, {int lasttime = -1, int limit = 20}) async {
+    final data = await _api('https://music.163.com/api/event/get/$userId', {
+      'getcounts': 'true',
+      'time': '$lasttime',
+      'limit': '$limit',
+      'total': 'false',
+    });
+    return _eventPage(data);
+  }
+
+  /// 给动态点赞 / 取消点赞（需要登录）。
+  Future<void> likeEvent(String threadId, bool like) => _api(
+    'https://music.163.com/api/resource/${like ? 'like' : 'unlike'}',
+    {'threadId': threadId},
+  );
+
+  /// 删除自己的动态。
+  Future<void> deleteEvent(int eventId) =>
+      _api('https://music.163.com/api/event/delete', {'id': '$eventId'});
+
+  EventPage _eventPage(Map<String, Object?> data) => EventPage(
+    events: [for (final e in _list(data['events'])) ?parseEvent(e)],
+    more: data['more'] == true,
+    lasttime: _int(data['lasttime']),
+  );
+
+  // ---------------------------------------------------------------- 私信
+
+  /// 私信会话列表（需要登录）。
+  Future<({List<Conversation> items, bool more})> conversations({
+    int offset = 0,
+    int limit = 30,
+  }) async {
+    final data = await _api('https://music.163.com/api/msg/private/users', {
+      'offset': '$offset',
+      'limit': '$limit',
+      'total': 'true',
+    });
+    return (
+      items: [
+        for (final m in _list(data['msgs']))
+          if (m is Map)
+            if (parseSocialUser(m['fromUser']) case final user?)
+              Conversation(
+                user: user,
+                preview: _messagePreview(_messageJson(m['lastMsg'])),
+                time: DateTime.fromMillisecondsSinceEpoch(_int(m['lastMsgTime'])),
+                unread: _int(m['newMsgCount']),
+              ),
+      ],
+      more: data['more'] == true,
+    );
+  }
+
+  /// 和 [userId] 的私信记录。[before] 传当前最早一条的时间取更早的，第一页传 null。
+  Future<MessageHistory> messageHistory(int userId, {DateTime? before, int limit = 30}) async {
+    final data = await _api('https://music.163.com/api/msg/private/history', {
+      'userId': '$userId',
+      'limit': '$limit',
+      'time': '${before?.millisecondsSinceEpoch ?? 0}',
+      'total': 'true',
+    });
+    final messages = [for (final m in _list(data['msgs'])) ?parsePrivateMessage(m)]
+      ..sort((a, b) => a.time.compareTo(b.time));
+    return MessageHistory(messages: messages, more: data['more'] == true);
+  }
+
+  /// 给 [userId] 发一条文字私信。
+  Future<void> sendMessage(int userId, String text) =>
+      _eapi('/api/msg/private/send', {'type': 'text', 'msg': text, 'userIds': '[$userId]'});
+
+  /// 把一首歌私信给 [userId]，可以附一句话。
+  Future<void> sendSong(int userId, String songId, {String text = ''}) => _eapi(
+    '/api/msg/private/send',
+    {'id': songId, 'msg': text, 'type': 'song', 'userIds': '[$userId]'},
+  );
 
   // ---------------------------------------------------------------- 歌手 / 专辑
 
@@ -787,6 +918,99 @@ class NeteaseApi {
           : null,
       location: location is Map ? _str(location['location']) : null,
     );
+  }
+
+  static SocialUser? parseSocialUser(Object? raw) {
+    if (raw is! Map || raw['userId'] == null) return null;
+    final detail = raw['avatarDetail'];
+    final types = {_int(raw['userType']), if (detail is Map) _int(detail['userType'])};
+    return SocialUser(
+      userId: _int(raw['userId']),
+      nickname: '${raw['remarkName'] ?? raw['nickname'] ?? ''}'.trim(),
+      avatarUrl: _https(_str(raw['avatarUrl'])),
+      signature: _str('${raw['signature'] ?? ''}'.trim()),
+      followed: raw['followed'] == true,
+      mutual: raw['mutual'] == true,
+      // userType 4 音乐人、2 明星 / 艺人；有绑定歌手（artistId）的也算。
+      musician: types.contains(4) || types.contains(2) || _int(raw['artistId']) > 0,
+      followeds: _int(raw['followeds']),
+    );
+  }
+
+  /// 动态正文、分享的资源都在 `json` 字段（一段 JSON 字符串）里。
+  static UserEvent? parseEvent(Object? raw) {
+    if (raw is! Map) return null;
+    final user = parseSocialUser(raw['user']);
+    if (user == null) return null;
+    final j = _messageJson(raw['json']);
+    final info = raw['info'];
+    final thread = info is Map ? info['commentThread'] : null;
+    final forwarded = j['event'];
+    return UserEvent(
+      id: _int(raw['id'] ?? raw['eventId']),
+      user: user,
+      time: DateTime.fromMillisecondsSinceEpoch(_int(raw['eventTime'])),
+      type: _int(raw['type']),
+      text: '${j['msg'] ?? ''}'.trim(),
+      title: _str('${j['title'] ?? ''}'.trim()),
+      pics: [
+        for (final p in _list(raw['pics']))
+          if (p is Map)
+            ?_https(_str(p['originUrl']) ?? _str(p['pcRectangleUrl']) ?? _str(p['squareUrl'])),
+      ],
+      song: parseSong(j['song']),
+      playlist: _parsePlaylist(j['playlist']),
+      album: _parseAlbum(j['album']),
+      forwarded: forwarded is Map ? parseEvent(forwarded) : null,
+      threadId:
+          _str(raw['threadId']) ??
+          (info is Map ? _str(info['threadId']) : null) ??
+          (thread is Map ? _str(thread['id']) : null),
+      likedCount: info is Map ? _int(info['likedCount']) : 0,
+      liked: info is Map && info['liked'] == true,
+      commentCount: info is Map ? _int(info['commentCount']) : 0,
+      shareCount: info is Map ? _int(info['shareCount']) : 0,
+    );
+  }
+
+  static PrivateMessage? parsePrivateMessage(Object? raw) {
+    if (raw is! Map) return null;
+    final from = raw['fromUser'];
+    final j = _messageJson(raw['msg']);
+    final pic = j['picInfo'];
+    return PrivateMessage(
+      id: _int(raw['id']),
+      fromUserId: from is Map ? _int(from['userId']) : 0,
+      time: DateTime.fromMillisecondsSinceEpoch(_int(raw['time'])),
+      text: '${j['msg'] ?? ''}',
+      song: parseSong(j['song']),
+      playlist: _parsePlaylist(j['playlist']),
+      album: _parseAlbum(j['album']),
+      imageUrl: pic is Map ? _https(_str(pic['picUrl']) ?? _str(pic['url'])) : null,
+    );
+  }
+
+  /// 私信 / 动态里嵌的 JSON 字符串，解析失败时返回空表。
+  static Map<Object?, Object?> _messageJson(Object? raw) {
+    if (raw is Map) return raw;
+    if (raw is! String || raw.isEmpty) return const {};
+    try {
+      final v = jsonDecode(raw);
+      return v is Map ? v : const {};
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  static String _messagePreview(Map<Object?, Object?> j) {
+    final text = '${j['msg'] ?? ''}'.trim();
+    if (text.isNotEmpty) return text;
+    String? name(Object? v) => v is Map ? _str(v['name']) : null;
+    if (name(j['song']) case final n?) return '[歌曲] $n';
+    if (name(j['playlist']) case final n?) return '[歌单] $n';
+    if (name(j['album']) case final n?) return '[专辑] $n';
+    if (j['picInfo'] != null) return '[图片]';
+    return _str(j['title']) ?? '[消息]';
   }
 
   static Playlist? _parsePlaylist(Object? raw) {

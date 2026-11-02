@@ -8,7 +8,6 @@ import '../../state/account_controller.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cover_art.dart';
-import '../../widgets/dev_badge.dart';
 import '../../widgets/image_viewer.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/song_tile.dart';
@@ -17,6 +16,10 @@ import '../library/track_list_view.dart';
 import '../music/artist_page.dart';
 import '../music/nav.dart';
 import '../music/ranking_page.dart';
+import '../social/event_card.dart';
+import '../social/follow_list_page.dart';
+import '../social/messages_page.dart';
+import '../social/social_widgets.dart';
 
 /// 用户主页。网易云的歌手和用户是两套 id：歌手入驻后绑定一个账号（`artist.accountId`），
 /// 账号资料里也记着绑定的歌手（`profile.artistId`）。这里两边合在一起显示：
@@ -25,13 +28,9 @@ import '../music/ranking_page.dart';
 /// - 从用户进入（[userId]，例如评论区头像）：先取账号资料，绑定了歌手再取歌手详情。
 ///
 /// 「主页」标签放 TA 的热门作品、音乐品味、创建的歌单、收藏的歌单；
-/// 有发行作品（是歌手）时再加「全部歌曲」「专辑」两个标签，否则只有主页。
+/// 有发行作品（是歌手）时再加「全部歌曲」「专辑」两个标签；有账号时加「动态」标签。
+/// 头部可以关注 / 取消关注、发私信，点关注数、粉丝数进列表。
 ///
-/// 和用户主页相关、还没做的功能（做的时候从这里接入）：
-/// - TODO(用户主页): 关注 / 取消关注按钮（现在点了提示待开发）；
-/// - TODO(用户主页): 关注列表、粉丝列表（点头部的关注 / 粉丝数进入）；
-/// - TODO(用户主页): 私信（头部按钮，接抽屉里的私信）；
-/// - TODO(用户主页): 用户动态标签（接抽屉里的「我的动态」）；
 /// - TODO(用户主页): 搜索页的「用户」结果（点进来到这个页面）。
 class UserPage extends StatefulWidget {
   const UserPage({super.key, this.userId, this.artist, this.name})
@@ -161,30 +160,26 @@ class _UserPageState extends State<UserPage> {
         }
         final home = _HomeTab(data: d, onRefresh: _reload);
         final a = d.artist;
-        if (!d.hasWorks || a == null) return SubPage(title: title, body: home);
-        final ref = ArtistRef(a.id, a.name);
+        final u = d.user;
+        final self = u != null && u.userId == AccountScope.of(context).profile?.userId;
+        final works = d.hasWorks && a != null;
+        final ref = a == null ? null : ArtistRef(a.id, a.name);
+        final tabs = <(String, Widget)>[
+          ('主页', home),
+          if (works) ('全部歌曲', ArtistAllSongs(artist: ref!)),
+          if (works) ('专辑', ArtistAlbums(artist: ref!)),
+          if (u != null)
+            ('动态', UserEventList(userId: u.userId, empty: self ? '还没有发过动态' : 'TA 还没有发过动态')),
+        ];
+        if (tabs.length == 1) return SubPage(title: title, body: home);
         return DefaultTabController(
-          length: 3,
+          length: tabs.length,
           child: SubPage(
             title: title,
             body: Column(
               children: [
-                const TabBar(
-                  tabs: [
-                    Tab(text: '主页'),
-                    Tab(text: '全部歌曲'),
-                    Tab(text: '专辑'),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      home,
-                      ArtistAllSongs(artist: ref),
-                      ArtistAlbums(artist: ref),
-                    ],
-                  ),
-                ),
+                TabBar(tabs: [for (final t in tabs) Tab(text: t.$1)]),
+                Expanded(child: TabBarView(children: [for (final t in tabs) t.$2])),
               ],
             ),
           ),
@@ -317,13 +312,17 @@ class _Header extends StatelessWidget {
     final u = d.user;
     final a = d.artist;
     final seed = a?.id ?? 'u${u?.userId}';
-    final stats = [
-      if (u != null && u.level > 0) 'Lv.${u.level}',
-      // TODO(用户主页): 关注 / 粉丝数点进去看列表。
-      if (u != null) '关注 ${formatPlayCount(u.follows)}',
-      if (u != null) '粉丝 ${formatPlayCount(u.followeds)}',
-      if (a != null) '单曲 ${a.songCount}',
-      if (a != null) '专辑 ${a.albumCount}',
+    final stats = <(String, VoidCallback?)>[
+      if (u != null && u.level > 0) ('Lv.${u.level}', null),
+      if (u != null)
+        ('关注 ${formatPlayCount(u.follows)}', () => FollowListPage.open(context, u.userId, d.name)),
+      if (u != null)
+        (
+          '粉丝 ${formatPlayCount(u.followeds)}',
+          () => FollowListPage.open(context, u.userId, d.name, fans: true),
+        ),
+      if (a != null) ('单曲 ${a.songCount}', null),
+      if (a != null) ('专辑 ${a.albumCount}', null),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -375,9 +374,22 @@ class _Header extends StatelessWidget {
                 ],
                 if (stats.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    stats.join(' · '),
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  Wrap(
+                    children: [
+                      for (final (i, (label, onTap)) in stats.indexed)
+                        GestureDetector(
+                          onTap: onTap,
+                          child: Text(
+                            i == 0 ? label : ' · $label',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: onTap == null
+                                  ? AppColors.textSecondary
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
                 if (u?.signature case final sig?) ...[
@@ -394,20 +406,16 @@ class _Header extends StatelessWidget {
                   Wrap(
                     spacing: 8,
                     children: [
-                      // TODO(用户主页): 接入关注接口后改成真的关注 / 取消关注。
-                      FilledButton.icon(
-                        onPressed: () => showNotReady('关注'),
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('关注'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          foregroundColor: AppColors.onAccent,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                      // TODO(用户主页): 私信做好后从这里直接打开和 TA 的对话。
+                      FollowButton(userId: u.userId, followed: u.followed, compact: true),
                       OutlinedButton(
-                        onPressed: () => showNotReady('私信'),
+                        onPressed: () => ChatPage.open(
+                          context,
+                          SocialUser(
+                            userId: u.userId,
+                            nickname: u.nickname,
+                            avatarUrl: u.avatarUrl,
+                          ),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: const BorderSide(color: AppColors.outline),
