@@ -4,10 +4,11 @@ import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/image_viewer.dart';
 import '../library/track_list_view.dart';
 import 'nav.dart';
 
-/// 歌手页：两个标签，热门歌曲和专辑。
+/// 歌手页：三个标签，热门歌曲、全部歌曲（按发行时间从新到旧）和专辑。
 class ArtistPage extends StatelessWidget {
   const ArtistPage({super.key, required this.artist});
 
@@ -16,7 +17,7 @@ class ArtistPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: SubPage(
         title: artist.name,
         body: Column(
@@ -24,6 +25,7 @@ class ArtistPage extends StatelessWidget {
             const TabBar(
               tabs: [
                 Tab(text: '热门歌曲'),
+                Tab(text: '全部歌曲'),
                 Tab(text: '专辑'),
               ],
             ),
@@ -31,6 +33,7 @@ class ArtistPage extends StatelessWidget {
               child: TabBarView(
                 children: [
                   _HotSongs(artist: artist),
+                  _AllSongs(artist: artist),
                   _Albums(artist: artist),
                 ],
               ),
@@ -78,6 +81,55 @@ class _HotSongsState extends State<_HotSongs> with AutomaticKeepAliveClientMixin
         circular: true,
         lines: [if (a != null) '单曲 ${a.songCount} · 专辑 ${a.albumCount}', ?a?.description],
         onPlayAll: playAll,
+      ),
+    );
+  }
+}
+
+class _AllSongs extends StatefulWidget {
+  const _AllSongs({required this.artist});
+
+  final ArtistRef artist;
+
+  @override
+  State<_AllSongs> createState() => _AllSongsState();
+}
+
+class _AllSongsState extends State<_AllSongs> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return TrackListView(
+      load: () => AppScope.of(context).api.artistAllSongs(widget.artist.id),
+      queueTitle: '${widget.artist.name} 全部歌曲',
+      emptyText: '没有歌曲',
+      header: (context, tracks, playAll) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Row(
+          children: [
+            FilledButton.icon(
+              onPressed: playAll,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('播放全部'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: AppColors.onAccent,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                tracks.isEmpty ? '按发行时间排序' : '共 ${tracks.length} 首 · 按发行时间从新到旧',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -175,11 +227,15 @@ class AlbumTile extends StatelessWidget {
     return ListTile(
       leading: SizedBox(
         width: 52,
-        child: CoverArt(
-          palette: fallbackPalette(a.id),
-          seed: a.id,
-          imageUrl: a.coverUrl,
-          radius: 6,
+        child: ViewableImage(
+          url: a.coverUrl,
+          title: a.name,
+          child: CoverArt(
+            palette: fallbackPalette(a.id),
+            seed: a.id,
+            imageUrl: a.coverUrl,
+            radius: 6,
+          ),
         ),
       ),
       title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),

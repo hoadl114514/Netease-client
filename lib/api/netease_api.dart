@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 
 import '../data/models.dart';
@@ -126,9 +127,19 @@ class NeteaseApi {
     final data = await _api('https://music.163.com/api/search/suggest/web', {'s': keyword});
     final r = data['result'];
     if (r is! Map) return const SearchSuggestion();
+    // 联想接口里的歌曲是旧格式（artists / album），没有封面，再批量取一次详情补上；
+    // 取不到就用原来的。
+    var songs = [for (final s in _list(r['songs'])) ?parseSong(s)];
+    if (songs.isNotEmpty) {
+      try {
+        final detailed = {
+          for (final s in await songDetails([for (final s in songs) s.id])) s.id: s,
+        };
+        songs = [for (final s in songs) detailed[s.id] ?? s];
+      } catch (_) {}
+    }
     return SearchSuggestion(
-      // 联想接口里的歌曲是旧格式（artists / album），没有封面。
-      songs: [for (final s in _list(r['songs'])) ?parseSong(s)],
+      songs: songs,
       artists: [for (final a in _list(r['artists'])) ?_parseArtist(a)],
       albums: [for (final a in _list(r['albums'])) ?_parseAlbum(a)],
       playlists: [for (final p in _list(r['playlists'])) ?_parsePlaylist(p)],
@@ -541,6 +552,53 @@ class NeteaseApi {
     );
   }
 
+  /// 歌手的全部歌曲，按发行时间从新到旧。接口单页最多 100 首（再大会返回别人的歌），
+  /// 先取第一页拿到总数，剩下的几页并发取。
+  Future<List<Song>> artistAllSongs(String id, {int maxSongs = 3000}) async {
+    const page = 100;
+    Future<({List<Song> songs, int total})> fetch(int offset) async {
+      final data = await _api('https://music.163.com/api/v1/artist/songs', {
+        'id': id,
+        'offset': '$offset',
+        'limit': '$page',
+        'order': 'time',
+        'private_cloud': 'true',
+        'work_type': '1',
+      });
+      return (
+        songs: [for (final s in _list(data['songs'])) ?parseSong(s)],
+        total: _int(data['total']),
+      );
+    }
+
+    final first = await fetch(0);
+    final total = min(first.total, maxSongs);
+    final rest = <List<Song>>[];
+    // 每批 4 个请求，别一下子打太多。
+    final offsets = [for (var o = page; o < total; o += page) o];
+    for (var i = 0; i < offsets.length; i += 4) {
+      final batch = offsets.sublist(i, min(i + 4, offsets.length));
+      rest.addAll([for (final r in await Future.wait(batch.map(fetch))) r.songs]);
+    }
+    final seen = <String>{};
+    return [
+      for (final s in [...first.songs, for (final r in rest) ...r])
+        // 防御：只留这位歌手参与的歌，并去重。
+        if ((s.artists.isEmpty || s.artists.any((a) => a.id == id)) && seen.add(s.id)) s,
+    ];
+  }
+
+  /// 歌手头像。同一位歌手只请求一次（歌手选择面板等处用）。
+  Future<String?> artistAvatar(String id) => _avatarCache[id] ??= artistDetail(id).then(
+    (r) => r.artist.avatarUrl,
+    onError: (Object _) {
+      _avatarCache.remove(id);
+      return null;
+    },
+  );
+
+  final Map<String, Future<String?>> _avatarCache = {};
+
   /// 歌手的专辑，按发行时间从新到旧。
   Future<({List<Album> albums, bool more})> artistAlbums(
     String id, {
@@ -734,11 +792,22 @@ class NeteaseApi {
     return Artist(
       id: '${raw['id']}',
       name: '${raw['name'] ?? ''}',
-      avatarUrl: _https(_str(raw['img1v1Url']) ?? _str(raw['picUrl'])),
+      avatarUrl: _https(_artistImage(raw)),
       description: _str(raw['briefDesc']),
       songCount: _int(raw['musicSize']),
       albumCount: _int(raw['albumSize']),
     );
+  }
+
+  /// 默认头像（灰色人像）的图片 id。img1v1Url 是它时说明没有方形头像，用 picUrl。
+  static const _defaultAvatarId = '5639395138885805';
+
+  static String? _artistImage(Map<Object?, Object?> raw) {
+    final square = _str(raw['img1v1Url']);
+    final pic = _str(raw['picUrl']);
+    if (square != null && !square.contains(_defaultAvatarId)) return square;
+    if (pic != null && !pic.contains(_defaultAvatarId)) return pic;
+    return square ?? pic;
   }
 
   static Album? _parseAlbum(Object? raw) {
@@ -758,7 +827,8 @@ class NeteaseApi {
           : main is Map
           ? '${main['name'] ?? ''}'
           : '',
-      coverUrl: _https(_str(raw['picUrl'])),
+      // 联想接口里的专辑只有 picId，没有 picUrl。
+      coverUrl: _https(_str(raw['picUrl'])) ?? imageUrlFromId(raw['picId']),
       publishTime: publish > 0 ? DateTime.fromMillisecondsSinceEpoch(publish) : null,
       size: _int(raw['size']),
       description: _str(raw['description']) ?? _str(raw['briefDesc']),
@@ -968,6 +1038,26 @@ class NeteaseApi {
 
   /// 网易云图片地址有时是 http，统一换成 https。
   static String? _https(String? url) => url?.replaceFirst(RegExp('^http:'), 'https:');
+}
+
+/// 由图片 id 算出图片地址（网易云的 encrypt_id：id 与固定密钥异或后取 MD5，再做 URL 安全的 Base64）。
+String? imageUrlFromId(Object? picId) {
+  final id = '${picId ?? ''}';
+  if (id.isEmpty || id == '0' || int.tryParse(id) == null) return null;
+  const key = '3go8&\$8*3*3h0k(2)2';
+  final bytes = [
+    for (var i = 0; i < id.length; i++) id.codeUnitAt(i) ^ key.codeUnitAt(i % key.length),
+  ];
+  final enc = base64Encode(crypto.md5.convert(bytes).bytes)
+      .replaceAll('/', '_')
+      .replaceAll('+', '-');
+  return 'https://p1.music.126.net/$enc/$id.jpg';
+}
+
+/// 去掉裁剪参数，取原图。
+String originalImage(String url) {
+  final q = url.indexOf('?');
+  return q < 0 ? url : url.substring(0, q);
 }
 
 /// 网易云图片按尺寸裁剪：`?param=200y200`。

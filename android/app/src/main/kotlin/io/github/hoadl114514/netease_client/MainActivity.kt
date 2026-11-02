@@ -2,14 +2,20 @@ package io.github.hoadl114514.netease_client
 
 import android.Manifest
 import android.app.NotificationManager
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.provider.Settings
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 // 继承 AudioServiceActivity，让界面和后台播放服务共用同一个 FlutterEngine。
 class MainActivity : AudioServiceActivity() {
@@ -43,9 +49,65 @@ class MainActivity : AudioServiceActivity() {
                     startActivity(Intent.createChooser(send, call.argument<String>("title")))
                     result.success(null)
                 }
+                "saveImage" -> saveImage(
+                    call.argument<ByteArray>("bytes")!!,
+                    call.argument<String>("name")!!,
+                    call.argument<String>("mime") ?: "image/jpeg",
+                    result,
+                )
                 else -> result.notImplemented()
             }
         }
+    }
+
+    // 保存图片到相册 Pictures/NeteaseClient。Android 10+ 走 MediaStore，不需要权限；
+    // 更早的系统要存储权限，没授权就先申请并返回 false，用户授权后再点一次。
+    private fun saveImage(bytes: ByteArray, name: String, mime: String, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1002)
+            result.success(false)
+            return
+        }
+        val main = Handler(Looper.getMainLooper())
+        Thread {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                        put(MediaStore.Images.Media.MIME_TYPE, mime)
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/NeteaseClient")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        ?: throw IllegalStateException("无法创建文件")
+                    try {
+                        contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+                        values.clear()
+                        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        contentResolver.update(uri, values, null, null)
+                    } catch (e: Exception) {
+                        contentResolver.delete(uri, null, null)
+                        throw e
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    val dir = File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                        "NeteaseClient",
+                    )
+                    dir.mkdirs()
+                    val file = File(dir, name)
+                    file.writeBytes(bytes)
+                    @Suppress("DEPRECATION")
+                    sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(file)))
+                }
+                main.post { result.success(true) }
+            } catch (e: Exception) {
+                main.post { result.error("save_failed", e.message, null) }
+            }
+        }.start()
     }
 
     private fun notificationsEnabled(): Boolean =

@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/image_viewer.dart';
 import '../../widgets/song_tile.dart';
 
 /// 歌曲列表页的通用骨架：头部 + 下拉刷新 + 加载 / 失败 / 空状态 + 歌曲列表。
@@ -19,6 +20,7 @@ class TrackListView extends StatefulWidget {
     this.sourceId,
     this.emptyText = '这里还没有歌曲',
     this.trailingFor,
+    this.searchable = true,
   });
 
   final Future<List<Song>> Function() load;
@@ -39,12 +41,23 @@ class TrackListView extends StatefulWidget {
   /// 每行右侧的附加信息（如听歌排行的播放次数）。
   final String? Function(int index)? trailingFor;
 
+  /// 在头部下面显示「搜索列表内歌曲」的输入框。
+  final bool searchable;
+
   @override
   State<TrackListView> createState() => _TrackListViewState();
 }
 
 class _TrackListViewState extends State<TrackListView> {
   late Future<List<Song>> _tracks = widget.load();
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(TrackListView old) {
@@ -61,16 +74,68 @@ class _TrackListViewState extends State<TrackListView> {
       PlayerScope.read(context)
           .playQueue(tracks, start: i, title: widget.queueTitle, sourceId: widget.sourceId);
 
+  Widget _searchField(int total, int? matched) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: TextField(
+        controller: _search,
+        onChanged: (v) => setState(() => _query = v.trim()),
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: AppColors.surfaceHigh,
+          hintText: '搜索列表内 $total 首歌曲',
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          suffixIcon: _query.isEmpty
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${matched ?? 0} 首',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    ),
+                    IconButton(
+                      tooltip: '清空',
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+                  ],
+                ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Song>>(
       future: _tracks,
       builder: (context, snap) {
         final tracks = snap.data ?? const <Song>[];
+        final loaded = snap.connectionState == ConnectionState.done && !snap.hasError;
+        // 搜索时只显示匹配的行，序号和点播放仍按完整列表。
+        final shown = _query.isEmpty
+            ? null
+            : [
+                for (var i = 0; i < tracks.length; i++)
+                  if (songMatches(tracks[i], _query)) i,
+              ];
         return RefreshIndicator(
           onRefresh: _reload,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             slivers: [
               SliverToBoxAdapter(
                 child: widget.header(
@@ -79,6 +144,8 @@ class _TrackListViewState extends State<TrackListView> {
                   tracks.isEmpty ? null : () => _play(tracks, 0),
                 ),
               ),
+              if (widget.searchable && loaded && tracks.isNotEmpty)
+                SliverToBoxAdapter(child: _searchField(tracks.length, shown?.length)),
               if (snap.connectionState != ConnectionState.done)
                 const SliverFillRemaining(
                   hasScrollBody: false,
@@ -99,15 +166,27 @@ class _TrackListViewState extends State<TrackListView> {
                     ),
                   ),
                 )
+              else if (shown != null && shown.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(
+                      child: Text('没有匹配的歌曲', style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                  ),
+                )
               else
                 SliverList.builder(
-                  itemCount: tracks.length,
-                  itemBuilder: (context, i) => SongTile(
-                    song: tracks[i],
-                    index: i + 1,
-                    trailing: widget.trailingFor?.call(i),
-                    onTap: () => _play(tracks, i),
-                  ),
+                  itemCount: shown?.length ?? tracks.length,
+                  itemBuilder: (context, n) {
+                    final i = shown?[n] ?? n;
+                    return SongTile(
+                      song: tracks[i],
+                      index: i + 1,
+                      trailing: widget.trailingFor?.call(i),
+                      onTap: () => _play(tracks, i),
+                    );
+                  },
                 ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ],
@@ -116,6 +195,12 @@ class _TrackListViewState extends State<TrackListView> {
       },
     );
   }
+}
+
+/// [query] 按空格分成几个词，每个词都要出现在歌名、别名、歌手或专辑里（不区分大小写）。
+bool songMatches(Song song, String query) {
+  final text = [song.title, ?song.subtitle, song.artist, song.album].join('\n').toLowerCase();
+  return query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).every(text.contains);
 }
 
 /// 列表页头部：封面、标题、几行说明、「播放全部」和附加按钮。
@@ -155,14 +240,18 @@ class CollectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final cover = SizedBox(
       width: 112,
-      child: CoverArt(
-        palette: palette ?? fallbackPalette(seed),
-        seed: seed,
-        imageUrl: coverUrl,
-        fallbackImage: fallbackCover,
-        icon: icon,
-        radius: circular ? 56 : AppRadius.panel,
-        shadow: AppShadows.medium,
+      child: ViewableImage(
+        url: coverUrl,
+        title: title,
+        child: CoverArt(
+          palette: palette ?? fallbackPalette(seed),
+          seed: seed,
+          imageUrl: coverUrl,
+          fallbackImage: fallbackCover,
+          icon: icon,
+          radius: circular ? 56 : AppRadius.panel,
+          shadow: AppShadows.medium,
+        ),
       ),
     );
     return Padding(

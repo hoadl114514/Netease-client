@@ -9,6 +9,7 @@ import '../shell/player_bar.dart';
 import '../state/player_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cover_art.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/playlist_card.dart';
 import '../widgets/song_tile.dart';
 import 'library/playlist_page.dart';
@@ -313,14 +314,25 @@ class _SuggestionsState extends State<_Suggestions> {
           const Divider(),
           for (final a in q.artists.take(2))
             ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
+              leading: _thumb(
+                seed: a.id,
+                url: a.avatarUrl,
+                title: a.name,
+                icon: Icons.person_rounded,
+                round: true,
+              ),
               title: Text(a.name),
               subtitle: const Text('歌手'),
               onTap: () => openArtist(context, ArtistRef(a.id, a.name)),
             ),
           for (final (i, s) in q.songs.take(4).indexed)
             ListTile(
-              leading: const Icon(Icons.music_note_rounded),
+              leading: _thumb(
+                seed: s.id,
+                url: s.coverUrl,
+                title: s.title,
+                icon: Icons.music_note_rounded,
+              ),
               title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('单曲 · ${s.artist}', maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: () =>
@@ -329,14 +341,24 @@ class _SuggestionsState extends State<_Suggestions> {
             ),
           for (final a in q.albums.take(2))
             ListTile(
-              leading: const Icon(Icons.album_outlined),
+              leading: _thumb(
+                seed: a.id,
+                url: a.coverUrl,
+                title: a.name,
+                icon: Icons.album_rounded,
+              ),
               title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('专辑 · ${a.artist}', maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: () => openAlbum(context, a.id, name: a.name),
             ),
           for (final p in q.playlists.take(2))
             ListTile(
-              leading: const Icon(Icons.queue_music_rounded),
+              leading: _thumb(
+                seed: p.id,
+                url: p.coverUrl,
+                title: p.name,
+                icon: Icons.queue_music_rounded,
+              ),
               title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: const Text('歌单'),
               onTap: () => SubPage.push(context, PlaylistPage(playlist: p)),
@@ -345,6 +367,28 @@ class _SuggestionsState extends State<_Suggestions> {
       ],
     );
   }
+
+  /// 联想结果左侧的小图：歌手圆形头像，其他方形封面。长按看大图。
+  Widget _thumb({
+    required String seed,
+    required String? url,
+    required String title,
+    required IconData icon,
+    bool round = false,
+  }) => SizedBox(
+    width: 44,
+    child: ViewableImage(
+      url: url,
+      title: title,
+      child: CoverArt(
+        palette: fallbackPalette(seed),
+        seed: seed,
+        imageUrl: url,
+        radius: round ? 22 : 6,
+        icon: url == null ? icon : null,
+      ),
+    ),
+  );
 
   Widget _hotList(BuildContext context) {
     final settings = AppScope.of(context).settings;
@@ -523,12 +567,16 @@ class _PlaylistTile extends StatelessWidget {
     return ListTile(
       leading: SizedBox(
         width: 52,
-        child: CoverArt(
-          palette: p.palette,
-          seed: p.id,
-          imageUrl: p.coverUrl,
-          fallbackImage: playlistCoverFallback(context, p),
-          radius: 6,
+        child: ViewableImage(
+          url: p.coverUrl,
+          title: p.name,
+          child: CoverArt(
+            palette: p.palette,
+            seed: p.id,
+            imageUrl: p.coverUrl,
+            fallbackImage: playlistCoverFallback(context, p),
+            radius: 6,
+          ),
         ),
       ),
       title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -554,12 +602,16 @@ class _ArtistTile extends StatelessWidget {
     return ListTile(
       leading: SizedBox(
         width: 52,
-        child: CoverArt(
-          palette: fallbackPalette(a.id),
-          seed: a.id,
-          imageUrl: a.avatarUrl,
-          radius: 26,
-          icon: Icons.person_rounded,
+        child: ViewableImage(
+          url: a.avatarUrl,
+          title: a.name,
+          child: CoverArt(
+            palette: fallbackPalette(a.id),
+            seed: a.id,
+            imageUrl: a.avatarUrl,
+            radius: 26,
+            icon: Icons.person_rounded,
+          ),
         ),
       ),
       title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),

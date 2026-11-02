@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import 'cover_art.dart';
 import 'hover_builder.dart';
 import 'round_icon_button.dart';
+import 'image_viewer.dart';
 
 final _firstCovers = <String, Future<String?>>{};
 
@@ -75,13 +76,17 @@ class PlaylistCard extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             child: Stack(
               children: [
-                CoverArt(
-                  palette: playlist.palette,
-                  seed: playlist.id,
-                  imageUrl: playlist.coverUrl,
-                  fallbackImage: playlistCoverFallback(context, playlist),
-                  radius: AppRadius.panel,
-                  shadow: hovered ? AppShadows.heavy : null,
+                ViewableImage(
+                  url: playlist.coverUrl,
+                  title: playlist.name,
+                  child: CoverArt(
+                    palette: playlist.palette,
+                    seed: playlist.id,
+                    imageUrl: playlist.coverUrl,
+                    fallbackImage: playlistCoverFallback(context, playlist),
+                    radius: AppRadius.panel,
+                    shadow: hovered ? AppShadows.heavy : null,
+                  ),
                 ),
                 // 右上角播放量，下面垫一层渐变保证可读。
                 Positioned(

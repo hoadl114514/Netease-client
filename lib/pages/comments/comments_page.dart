@@ -9,6 +9,7 @@ import '../../state/account_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/image_viewer.dart';
 import '../login_page.dart';
 
 /// 评论区：「热门」「最新」两个标签，各自滚到底加载下一页；点评论回复，「N 条回复」展开楼中楼；
@@ -148,11 +149,15 @@ class _ResourceHeader extends StatelessWidget {
         children: [
           SizedBox(
             width: 40,
-            child: CoverArt(
-              palette: fallbackPalette(seed),
-              seed: seed,
-              imageUrl: coverUrl,
-              radius: 6,
+            child: ViewableImage(
+              url: coverUrl,
+              title: title,
+              child: CoverArt(
+                palette: fallbackPalette(seed),
+                seed: seed,
+                imageUrl: coverUrl,
+                radius: 6,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -508,12 +513,16 @@ class _CommentTileState extends State<CommentTile> {
           children: [
             SizedBox(
               width: 36,
-              child: CoverArt(
-                palette: fallbackPalette('u${c.user.userId}'),
-                seed: 'u${c.user.userId}',
-                imageUrl: c.user.avatarUrl,
-                radius: 18,
-                icon: Icons.person_rounded,
+              child: ViewableImage(
+                url: c.user.avatarUrl,
+                title: c.user.nickname,
+                child: CoverArt(
+                  palette: fallbackPalette('u${c.user.userId}'),
+                  seed: 'u${c.user.userId}',
+                  imageUrl: c.user.avatarUrl,
+                  radius: 18,
+                  icon: Icons.person_rounded,
+                ),
               ),
             ),
             const SizedBox(width: 12),

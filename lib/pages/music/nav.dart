@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
+import '../../widgets/cover_art.dart';
 import '../../shell/player_bar.dart';
 import 'album_page.dart';
 import 'artist_page.dart';
@@ -56,7 +58,17 @@ Future<ArtistRef?> pickSongArtist(BuildContext context, Song song) async {
           ),
           for (final a in artists)
             ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
+              leading: SizedBox(
+                width: 40,
+                child: CoverArt(
+                  palette: fallbackPalette(a.id),
+                  seed: a.id,
+                  radius: 20,
+                  icon: Icons.person_rounded,
+                  // 歌曲里只有歌手名和 id，头像另外取（有缓存）。
+                  fallbackImage: () => AppScope.of(context).api.artistAvatar(a.id),
+                ),
+              ),
               title: Text(a.name),
               onTap: () => Navigator.of(context).pop(a),
             ),

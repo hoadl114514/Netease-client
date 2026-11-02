@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/flow_background.dart';
+import '../../widgets/image_viewer.dart';
 import '../../widgets/like_button.dart';
 import '../../widgets/round_icon_button.dart';
 import '../../widgets/share.dart';
@@ -239,6 +240,9 @@ class _CoverPane extends StatelessWidget {
           child: Center(
             child: GestureDetector(
               onTap: onTapCover,
+              onLongPress: song.coverUrl == null
+                  ? null
+                  : () => ImageViewerPage.open(context, song.coverUrl!, title: song.title),
               child: Hero(
                 tag: 'now-playing-cover',
                 child: AnimatedScale(
@@ -296,12 +300,16 @@ class _LyricsPane extends StatelessWidget {
             children: [
               SizedBox.square(
                 dimension: 52,
-                child: CoverArt(
-                  palette: song.palette,
-                  seed: song.id,
-                  imageUrl: song.coverUrl,
-                  radius: 6,
-                  shadow: AppShadows.medium,
+                child: ViewableImage(
+                  url: song.coverUrl,
+                  title: song.title,
+                  child: CoverArt(
+                    palette: song.palette,
+                    seed: song.id,
+                    imageUrl: song.coverUrl,
+                    radius: 6,
+                    shadow: AppShadows.medium,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
