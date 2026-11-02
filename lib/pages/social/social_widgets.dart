@@ -85,7 +85,12 @@ class _FollowButtonState extends State<FollowButton> {
       widget.onChanged?.call(next);
       AppScope.toast(next ? '已关注' : '已取消关注');
     } on ApiException catch (e) {
-      AppScope.toast('${next ? '关注' : '取消关注'}失败：${e.message}');
+      // 250：关注要带易盾反作弊 token，第三方客户端拿不到，只能去官方 App 关注。
+      AppScope.toast(
+        next && e.code == 250
+            ? '关注被网易云风控拦下了，暂时只能在官方 App 里关注'
+            : '${next ? '关注' : '取消关注'}失败：${e.message}',
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
