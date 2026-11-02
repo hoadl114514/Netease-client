@@ -49,6 +49,8 @@ class NowPlayingPage extends StatefulWidget {
 }
 
 class _NowPlayingPageState extends State<NowPlayingPage> {
+  static const _hPad = EdgeInsets.symmetric(horizontal: 24);
+
   late final _pages = PageController(initialPage: widget.initialLyrics ? 1 : 0);
 
   void _goTo(int page) => _pages.animateToPage(
@@ -80,31 +82,44 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
           palette: player.palette,
           imageUrl: song.coverUrl,
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Column(
-                children: [
-                  const _TopBar(),
-                  Expanded(
-                    child: PageView(
-                      controller: _pages,
-                      children: [
-                        _CoverPane(song: song, onTapCover: () => _goTo(1)),
-                        _LyricsPane(song: song, onTapHeader: () => _goTo(0)),
-                      ],
-                    ),
+            // 左右留白放在每一页里面而不是整个页面外面：PageView 占满屏宽，
+            // 滑动时页面从屏幕边缘进出，不会在留白处被切出一道硬边。
+            child: Column(
+              children: [
+                const Padding(padding: _hPad, child: _TopBar()),
+                Expanded(
+                  child: PageView(
+                    controller: _pages,
+                    children: [
+                      Padding(
+                        padding: _hPad,
+                        child: _CoverPane(song: song, onTapCover: () => _goTo(1)),
+                      ),
+                      Padding(
+                        padding: _hPad,
+                        child: _LyricsPane(song: song, onTapHeader: () => _goTo(0)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  _PageDots(controller: _pages, count: 2),
-                  const SizedBox(height: 8),
-                  const SeekBar(),
-                  const SizedBox(height: 4),
-                  const _QualityPill(),
-                  const SizedBox(height: 8),
-                  const _Controls(),
-                  const SizedBox(height: 8),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                _PageDots(controller: _pages, count: 2),
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: _hPad,
+                  child: Column(
+                    children: [
+                      SeekBar(),
+                      SizedBox(height: 4),
+                      _QualityPill(),
+                      SizedBox(height: 12),
+                      _Controls(),
+                    ],
+                  ),
+                ),
+                // 控制区离底部留够距离，单手拇指更好按。
+                const SizedBox(height: 40),
+              ],
             ),
           ),
         ),
@@ -428,33 +443,38 @@ class _CommentButtonState extends State<_CommentButton> {
   @override
   Widget build(BuildContext context) {
     final n = _count;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        RoundIconButton(
-          icon: Icons.mode_comment_outlined,
-          onPressed: () => CommentsPage.openSong(context, widget.song),
-          tooltip: '评论',
-          color: Colors.white,
-          size: widget.size,
-          iconSize: widget.iconSize,
-        ),
-        if (n != null && n > 0)
-          Positioned(
-            left: widget.size * 0.62,
-            top: widget.size * 0.08,
-            child: IgnorePointer(
-              child: Text(
-                n > 999 ? '999+' : '$n',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+    // 右边多留一点宽度给评论数，免得「999+」伸出屏幕边缘。
+    return SizedBox(
+      width: widget.size + 16,
+      height: widget.size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          RoundIconButton(
+            icon: Icons.mode_comment_outlined,
+            onPressed: () => CommentsPage.openSong(context, widget.song),
+            tooltip: '评论',
+            color: Colors.white,
+            size: widget.size,
+            iconSize: widget.iconSize,
+          ),
+          if (n != null && n > 0)
+            Positioned(
+              left: widget.size * 0.62,
+              top: widget.size * 0.08,
+              child: IgnorePointer(
+                child: Text(
+                  n > 999 ? '999+' : '$n',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
