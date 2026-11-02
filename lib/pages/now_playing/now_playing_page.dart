@@ -440,7 +440,11 @@ class _CommentButtonState extends State<_CommentButton> {
           () => api
               .comments(CommentTarget.song.threadId(id), pageSize: 1)
               .then((p) => _counts[id] = p.total)
-              .whenComplete(() => _pending.remove(id)),
+              // 注意不能写成 `=> _pending.remove(id)`：remove 返回的就是这个 future 本身，
+              // whenComplete 会等它完成，自己等自己，后面的 setState 永远不会执行。
+              .whenComplete(() {
+                _pending.remove(id);
+              }),
         )
         .then((n) {
           if (mounted && widget.song.id == id) setState(() => _count = n);
