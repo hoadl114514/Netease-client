@@ -123,43 +123,59 @@ void main() {
     expect(seen.single.bodyFields['time'], '999');
   });
 
-  test('follow and unfollow hit the follow / delfollow paths', () async {
+  test('follow and unfollow go through WEAPI with an encrypted form', () async {
     final seen = <http.Request>[];
     final api = _api({}, seen: seen);
     await api.setFollowed(42, true);
     await api.setFollowed(42, false);
-    expect(seen.map((r) => r.url.path), ['/api/user/follow/42', '/api/user/delfollow/42']);
+    expect(seen.map((r) => r.url.toString()), [
+      'https://music.163.com/weapi/user/follow/42',
+      'https://music.163.com/weapi/user/delfollow/42',
+    ]);
+    final form = seen.first.bodyFields;
+    expect(form.keys, unorderedEquals(['params', 'encSecKey']));
+    expect(form['encSecKey'], hasLength(256));
   });
 
-  test('follow falls back to EAPI when the plain API is risk-controlled', () async {
-    final seen = <http.Request>[];
+  test('risk-control errors include the dialog reason', () async {
     final api = NeteaseApi(
-      cookies: const {'MUSIC_U': 'u'},
-      client: MockClient((r) async {
-        seen.add(r);
-        final body = r.url.path.startsWith('/api/')
-            ? {'code': -460, 'message': '网络环境存在风险'}
-            : {'code': 200};
-        return http.Response(jsonEncode(body), 200);
-      }),
-    );
-    await api.setFollowed(42, true);
-    expect(seen.map((r) => r.url.path), ['/api/user/follow/42', '/eapi/user/follow/42']);
-  });
-
-  test('follow does not retry when logged out', () async {
-    final seen = <http.Request>[];
-    final api = NeteaseApi(
-      client: MockClient((r) async {
-        seen.add(r);
-        return http.Response(jsonEncode({'code': 301}), 200);
-      }),
+      client: MockClient(
+        (_) async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'code': 250,
+              'message': '关注异常',
+              'dialog': {'subtitle': '您操作太快啦，请稍后再试'},
+            }),
+          ),
+          200,
+        ),
+      ),
     );
     await expectLater(
       api.setFollowed(42, true),
-      throwsA(isA<ApiException>().having((e) => e.needsLogin, 'needsLogin', isTrue)),
+      throwsA(isA<ApiException>().having((e) => e.message, 'message', '关注异常：您操作太快啦，请稍后再试')),
     );
-    expect(seen, hasLength(1));
+  });
+
+  test('the follow feed reads its list from `event`', () async {
+    final api = _api({
+      '/api/v1/event/get': {
+        'code': 200,
+        'more': false,
+        'lasttime': 5,
+        'event': [
+          {
+            'id': 1,
+            'type': 35,
+            'eventTime': 1,
+            'user': _user(2),
+            'json': jsonEncode({'msg': '动态'}),
+          },
+        ],
+      },
+    });
+    expect((await api.followFeed()).events.single.text, '动态');
   });
 
   test('follows and fans lists', () async {

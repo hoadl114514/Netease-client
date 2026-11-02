@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../data/models.dart';
 import 'cookies.dart';
 import 'eapi_crypto.dart';
+import 'weapi_crypto.dart';
 import 'xeapi_crypto.dart';
 
 class ApiException implements Exception {
@@ -566,16 +567,9 @@ class NeteaseApi {
 
   // ---------------------------------------------------------------- 关注 / 粉丝
 
-  /// 关注 / 取消关注（需要登录）。明文接口被风控时换 EAPI 再试一次（关注是幂等的）。
-  Future<void> setFollowed(int userId, bool follow) async {
-    final path = '/api/user/${follow ? 'follow' : 'delfollow'}/$userId';
-    try {
-      await _api('https://music.163.com$path', const {});
-    } on ApiException catch (e) {
-      if (e.needsLogin) rethrow;
-      await _eapi(path, const {});
-    }
-  }
+  /// 关注 / 取消关注（需要登录）。明文和 EAPI 会被风控（250「操作太快」），要走网页端 WEAPI。
+  Future<void> setFollowed(int userId, bool follow) =>
+      _weapi('/api/user/${follow ? 'follow' : 'delfollow'}/$userId', const {});
 
   /// [userId] 关注的人，按 offset 翻页。
   Future<SocialUserPage> userFollows(int userId, {int offset = 0, int limit = 30}) async {
@@ -637,8 +631,9 @@ class NeteaseApi {
   Future<void> deleteEvent(int eventId) =>
       _api('https://music.163.com/api/event/delete', {'id': '$eventId'});
 
+  /// 关注动态的列表字段叫 `event`，用户动态叫 `events`。
   EventPage _eventPage(Map<String, Object?> data) => EventPage(
-    events: [for (final e in _list(data['events'])) ?parseEvent(e)],
+    events: [for (final e in _list(data['events'] ?? data['event'])) ?parseEvent(e)],
     more: data['more'] == true,
     lasttime: _int(data['lasttime']),
   );
@@ -1147,6 +1142,21 @@ class NeteaseApi {
     return _check(_decodeJson(body));
   }
 
+  /// 以网页端身份发一个 WEAPI 加密请求（带 `csrf_token`）。
+  Future<Map<String, Object?>> _weapi(String apiPath, Map<String, Object?> params) async {
+    final body = jsonEncode({...params, 'csrf_token': _cookies['__csrf'] ?? ''});
+    final res = await _post(
+      Uri.parse('https://music.163.com${apiPath.replaceFirst('/api/', '/weapi/')}'),
+      WeapiCrypto.encrypt(body, random: _random),
+      userAgent: _webUserAgent,
+    );
+    return _check(_decodeJson(utf8.decode(res.bodyBytes)));
+  }
+
+  static const _webUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0';
+
   // ---------------------------------------------------------------- XEAPI
 
   /// XEAPI 用的设备号（每次启动随机一个）和服务端公钥（首次用到时取，失效时重取）。
@@ -1253,13 +1263,17 @@ class NeteaseApi {
     Map<String, String> form, {
     bool anonymous = false,
     Map<String, String> device = const {},
+    String? userAgent,
   }) async {
     final http.Response res;
     try {
       res = await _client
           .post(
             url,
-            headers: _headers(anonymous: anonymous, device: device),
+            headers: {
+              ..._headers(anonymous: anonymous, device: device),
+              'User-Agent': ?userAgent,
+            },
             body: form,
           )
           .timeout(_timeout);
@@ -1286,7 +1300,10 @@ class NeteaseApi {
     final code = data['code'];
     if (code is int && code != 200) {
       final msg = _str(data['message']) ?? _str(data['msg']) ?? '接口返回错误';
-      throw ApiException(msg, code: code);
+      // 风控时 message 只有「关注异常」，具体原因（「您操作太快啦」）在弹窗字段里。
+      final dialog = data['dialog'];
+      final detail = dialog is Map ? _str(dialog['subtitle']) : null;
+      throw ApiException(detail == null ? msg : '$msg：$detail', code: code);
     }
     return data;
   }
