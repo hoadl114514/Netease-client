@@ -85,16 +85,29 @@ class _FollowButtonState extends State<FollowButton> {
       widget.onChanged?.call(next);
       AppScope.toast(next ? '已关注' : '已取消关注');
     } on ApiException catch (e) {
-      // 250：关注要带易盾反作弊 token，第三方客户端拿不到，只能去官方 App 关注。
-      AppScope.toast(
-        next && e.code == 250
-            ? '关注被网易云风控拦下了，暂时只能在官方 App 里关注'
-            : '${next ? '关注' : '取消关注'}失败：${e.message}',
-      );
+      if (next && e.code == 250 && mounted) {
+        await _explainRiskControl();
+      } else {
+        AppScope.toast('${next ? '关注' : '取消关注'}失败：${e.message}');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// 网易云目前拦下了 App 以外的关注请求（code 250「关注异常」），网页版也一样，
+  /// 取消关注不受影响。这里说明一下，免得用户以为是客户端坏了。
+  Future<void> _explainRiskControl() => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('暂时无法关注'),
+      content: const Text(
+        '网易云目前只允许在官方 App 里关注用户，网页版和第三方客户端发起的关注都会被拦下（提示「关注异常」）。\n\n'
+        '请先在网易云音乐 App 里关注 TA。取消关注、查看关注列表等功能不受影响。',
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('知道了'))],
+    ),
+  );
 
   Future<bool> _confirmUnfollow() async =>
       await showDialog<bool>(

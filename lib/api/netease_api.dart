@@ -567,7 +567,8 @@ class NeteaseApi {
 
   // ---------------------------------------------------------------- 关注 / 粉丝
 
-  /// 关注 / 取消关注（需要登录）。明文和 EAPI 会被风控（250「操作太快」），要走网页端 WEAPI。
+  /// 关注 / 取消关注（需要登录），和参考实现一样走网页端 WEAPI。
+  /// 目前网易云对官方 App 以外的关注请求一律返回 250「关注异常」（网页版也是），取消关注正常。
   Future<void> setFollowed(int userId, bool follow) =>
       _weapi('/api/user/${follow ? 'follow' : 'delfollow'}/$userId', const {});
 

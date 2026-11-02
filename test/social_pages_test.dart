@@ -8,6 +8,7 @@ import 'package:netease_client/app/app.dart';
 import 'package:netease_client/data/models.dart';
 import 'package:netease_client/pages/social/follow_page.dart';
 import 'package:netease_client/pages/social/messages_page.dart';
+import 'package:netease_client/pages/social/social_widgets.dart';
 import 'package:netease_client/state/account_controller.dart';
 import 'package:netease_client/state/player_controller.dart';
 
@@ -67,6 +68,9 @@ MockClient _client({List<http.Request>? sent}) => MockClient((r) async {
         },
       ],
     });
+  }
+  if (path == '/weapi/user/follow/2') {
+    return http.Response.bytes(utf8.encode(jsonEncode({'code': 250, 'message': '关注异常'})), 200);
   }
   if (path == '/eapi/msg/private/send') {
     sent?.add(r);
@@ -130,5 +134,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(sent, hasLength(1));
     expect(find.text('在的'), findsOneWidget);
+  });
+
+  testWidgets('a risk-controlled follow explains itself in a dialog', (tester) async {
+    await _pump(tester, _client(), const Center(child: FollowButton(userId: 2, followed: false)));
+    await tester.tap(find.text('关注'));
+    await tester.pumpAndSettle();
+    expect(find.text('暂时无法关注'), findsOneWidget);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    expect(find.text('暂时无法关注'), findsNothing);
+    expect(find.text('关注'), findsOneWidget);
   });
 }
