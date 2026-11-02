@@ -33,6 +33,19 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "shareText" -> {
+                    val send = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text"))
+                        .putExtra(Intent.EXTRA_SUBJECT, call.argument<String>("subject"))
+                    startActivity(Intent.createChooser(send, call.argument<String>("title")))
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun notificationsEnabled(): Boolean =
@@ -51,5 +64,6 @@ class MainActivity : AudioServiceActivity() {
 
     private companion object {
         const val CHANNEL = "netease_client/system_media"
+        const val SHARE_CHANNEL = "netease_client/share"
     }
 }

@@ -104,11 +104,13 @@ void main() {
     expect(find.byType(NowPlayingPage), findsOneWidget);
     expect(find.text('第0行翻译'), findsOneWidget);
 
-    // 播放页里切回封面再切回歌词。
-    await tester.tap(find.byTooltip('关闭歌词'));
+    // 播放页里右滑回封面，再左滑回歌词；歌词按钮已经去掉。
+    final pages = find.byType(PageView);
+    await tester.fling(pages, const Offset(400, 0), 1500);
     await settle(tester);
     expect(find.text('第0行翻译'), findsNothing);
-    await tester.tap(find.byTooltip('歌词'));
+    expect(find.byTooltip('歌词'), findsNothing);
+    await tester.fling(pages, const Offset(-400, 0), 1500);
     await settle(tester);
     expect(find.text('第0行翻译'), findsOneWidget);
 

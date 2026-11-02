@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../comments/comments_page.dart';
+import '../music/nav.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
-import '../../widgets/dev_badge.dart';
 import '../../widgets/flow_background.dart';
 import '../../widgets/like_button.dart';
 import '../../widgets/round_icon_button.dart';
+import '../../widgets/share.dart';
 import 'lyrics_view.dart';
 import 'player_controls.dart';
 import 'song_menu.dart';
@@ -35,8 +37,8 @@ Route<void> slideUpRoute(Widget page) => PageRouteBuilder<void>(
 Future<void> openNowPlaying(BuildContext context, {bool showLyrics = false}) =>
     Navigator.of(context).push(slideUpRoute(NowPlayingPage(initialLyrics: showLyrics)));
 
-/// 全屏播放页：流光背景，中间在「封面」和「歌词」两种模式间切换，下方控制区两种模式共用。
-/// 下滑收起。
+/// 全屏播放页：流光背景，中间左右滑动在「封面」和「歌词」两页间切换（歌词在右边），
+/// 下方控制区两页共用。下滑收起。
 class NowPlayingPage extends StatefulWidget {
   const NowPlayingPage({super.key, this.initialLyrics = false});
 
@@ -47,9 +49,21 @@ class NowPlayingPage extends StatefulWidget {
 }
 
 class _NowPlayingPageState extends State<NowPlayingPage> {
-  late bool _lyrics = widget.initialLyrics;
+  static const _hPad = EdgeInsets.symmetric(horizontal: 24);
 
-  void _toggleLyrics() => setState(() => _lyrics = !_lyrics);
+  late final _pages = PageController(initialPage: widget.initialLyrics ? 1 : 0);
+
+  void _goTo(int page) => _pages.animateToPage(
+    page,
+    duration: const Duration(milliseconds: 350),
+    curve: Curves.easeOutCubic,
+  );
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,50 +82,87 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
           palette: player.palette,
           imageUrl: song.coverUrl,
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Column(
-                children: [
-                  const _TopBar(),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, a) => FadeTransition(
-                        opacity: a,
-                        child: ScaleTransition(
-                          scale: Tween(begin: 0.96, end: 1.0).animate(a),
-                          child: child,
-                        ),
+            // 左右留白放在每一页里面而不是整个页面外面：PageView 占满屏宽，
+            // 滑动时页面从屏幕边缘进出，不会在留白处被切出一道硬边。
+            child: Column(
+              children: [
+                const Padding(padding: _hPad, child: _TopBar()),
+                Expanded(
+                  child: PageView(
+                    controller: _pages,
+                    children: [
+                      Padding(
+                        padding: _hPad,
+                        child: _CoverPane(song: song, onTapCover: () => _goTo(1)),
                       ),
-                      child: _lyrics
-                          ? _LyricsPane(
-                              key: const ValueKey('lyrics'),
-                              song: song,
-                              onTapHeader: _toggleLyrics,
-                            )
-                          : _CoverPane(
-                              key: const ValueKey('cover'),
-                              song: song,
-                              onTapCover: _toggleLyrics,
-                            ),
-                    ),
+                      Padding(
+                        padding: _hPad,
+                        child: _LyricsPane(song: song, onTapHeader: () => _goTo(0)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  const SeekBar(),
-                  const SizedBox(height: 4),
-                  const _QualityPill(),
-                  const SizedBox(height: 8),
-                  const _Controls(),
-                  const SizedBox(height: 12),
-                  _BottomRow(lyrics: _lyrics, onToggleLyrics: _toggleLyrics),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                _PageDots(controller: _pages, count: 2),
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: _hPad,
+                  child: Column(
+                    children: [
+                      SeekBar(),
+                      SizedBox(height: 4),
+                      _QualityPill(),
+                      SizedBox(height: 12),
+                      _Controls(),
+                    ],
+                  ),
+                ),
+                // 控制区离底部留够距离，单手拇指更好按。
+                const SizedBox(height: 56),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 封面 / 歌词两页的位置指示。
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.controller, required this.count});
+
+  final PageController controller;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final page = controller.hasClients && controller.position.haveDimensions
+            ? controller.page ?? controller.initialPage.toDouble()
+            : controller.initialPage.toDouble();
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < count; i++)
+              Container(
+                width: 6 + 8 * (1 - (page - i).abs()).clamp(0.0, 1.0),
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  color: Color.lerp(
+                    Colors.white24,
+                    Colors.white70,
+                    (1 - (page - i).abs()).clamp(0.0, 1.0),
+                  ),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -149,6 +200,16 @@ class _TopBar extends StatelessWidget {
               ),
             ),
             RoundIconButton(
+              icon: Icons.share_outlined,
+              onPressed: () {
+                final song = PlayerScope.read(context).current;
+                if (song != null) shareSong(song);
+              },
+              tooltip: '分享',
+              color: Colors.white70,
+              iconSize: 22,
+            ),
+            RoundIconButton(
               icon: Icons.more_horiz_rounded,
               onPressed: () => showSongMenu(context),
               tooltip: '更多',
@@ -162,9 +223,9 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// 封面模式：大封面 + 歌名歌手。点封面切到歌词。
+/// 封面页：大封面 + 歌名歌手。点封面或向左滑切到歌词。
 class _CoverPane extends StatelessWidget {
-  const _CoverPane({super.key, required this.song, required this.onTapCover});
+  const _CoverPane({required this.song, required this.onTapCover});
 
   final Song song;
   final VoidCallback onTapCover;
@@ -216,9 +277,9 @@ class _CoverPane extends StatelessWidget {
   }
 }
 
-/// 歌词模式：顶部小封面和歌名，下面是歌词。点顶部回到封面。
+/// 歌词页：顶部小封面和歌名，下面是歌词。点顶部或向右滑回到封面。
 class _LyricsPane extends StatelessWidget {
-  const _LyricsPane({super.key, required this.song, required this.onTapHeader});
+  const _LyricsPane({required this.song, required this.onTapHeader});
 
   final Song song;
   final VoidCallback onTapHeader;
@@ -275,6 +336,15 @@ class _TitleRow extends StatelessWidget {
   final Song song;
   final bool large;
 
+  /// 点歌手名：先选歌手（多位时），再收起播放页、打开歌手主页。
+  Future<void> _openArtist(BuildContext context) async {
+    final nav = Navigator.of(context);
+    final artist = await pickSongArtist(context, song);
+    if (artist == null || !nav.mounted) return;
+    nav.pop();
+    await openArtist(nav.context, artist);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -295,11 +365,14 @@ class _TitleRow extends StatelessWidget {
                   style: TextStyle(fontSize: large ? 22 : 17, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  song.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: large ? 16 : 14, color: Colors.white60),
+                GestureDetector(
+                  onTap: song.artists.isEmpty ? null : () => _openArtist(context),
+                  child: Text(
+                    song.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: large ? 16 : 14, color: Colors.white60),
+                  ),
                 ),
               ],
             ),
@@ -311,7 +384,97 @@ class _TitleRow extends StatelessWidget {
           iconSize: large ? 26 : 24,
           color: Colors.white,
         ),
+        _CommentButton(song: song, size: large ? 44 : 40, iconSize: large ? 24 : 22),
       ],
+    );
+  }
+}
+
+/// 评论按钮，右上角带评论数（超过 999 显示 999+）。
+class _CommentButton extends StatefulWidget {
+  const _CommentButton({required this.song, required this.size, required this.iconSize});
+
+  final Song song;
+  final double size;
+  final double iconSize;
+
+  @override
+  State<_CommentButton> createState() => _CommentButtonState();
+}
+
+class _CommentButtonState extends State<_CommentButton> {
+  /// 每首歌只取一次评论数，封面 / 歌词两页和反复打开播放页共用。
+  static final _counts = <String, int>{};
+  static final _pending = <String, Future<int>>{};
+
+  int? _count;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_CommentButton old) {
+    super.didUpdateWidget(old);
+    if (old.song.id != widget.song.id) _load();
+  }
+
+  void _load() {
+    final id = widget.song.id;
+    _count = _counts[id];
+    if (_count != null) return;
+    final api = AppScope.of(context).api;
+    _pending
+        .putIfAbsent(
+          id,
+          () => api
+              .comments(CommentTarget.song.threadId(id), pageSize: 1)
+              .then((p) => _counts[id] = p.total)
+              .whenComplete(() => _pending.remove(id)),
+        )
+        .then((n) {
+          if (mounted && widget.song.id == id) setState(() => _count = n);
+        })
+        .catchError((Object _) {}); // 取不到就不显示数字。
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _count;
+    // 右边多留一点宽度给评论数，免得「999+」伸出屏幕边缘。
+    return SizedBox(
+      width: widget.size + 16,
+      height: widget.size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          RoundIconButton(
+            icon: Icons.mode_comment_outlined,
+            onPressed: () => CommentsPage.openSong(context, widget.song),
+            tooltip: '评论',
+            color: Colors.white,
+            size: widget.size,
+            iconSize: widget.iconSize,
+          ),
+          if (n != null && n > 0)
+            Positioned(
+              left: widget.size * 0.62,
+              top: widget.size * 0.08,
+              child: IgnorePointer(
+                child: Text(
+                  n > 999 ? '999+' : '$n',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -357,20 +520,31 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = PlayerScope.of(context);
-    final one = player.repeat == Repeat.one;
+    final mode = player.playMode;
+    final radio = player.isRadio;
+    final (IconData icon, String label) = switch (mode) {
+      PlayMode.list when radio => (Icons.all_inclusive_rounded, '无限播放'),
+      PlayMode.list => (Icons.repeat_rounded, mode.label),
+      PlayMode.shuffle => (Icons.shuffle_rounded, mode.label),
+      PlayMode.one => (Icons.repeat_one_rounded, mode.label),
+    };
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         RoundIconButton(
-          icon: Icons.shuffle_rounded,
-          onPressed: player.toggleShuffle,
-          tooltip: player.shuffle ? '关闭随机播放' : '随机播放',
-          color: player.shuffle ? Colors.white : Colors.white38,
+          icon: icon,
+          onPressed: () {
+            player.cyclePlayMode();
+            final next = player.playMode;
+            AppScope.toast(next == PlayMode.list && radio ? '无限播放' : next.label);
+          },
+          tooltip: label,
+          color: Colors.white70,
           size: 44,
-          iconSize: 22,
+          iconSize: 24,
         ),
         RoundIconButton(
-          icon: Icons.fast_rewind_rounded,
+          icon: Icons.skip_previous_rounded,
           onPressed: player.previous,
           tooltip: '上一首',
           color: Colors.white,
@@ -379,7 +553,7 @@ class _Controls extends StatelessWidget {
         ),
         const PlayPauseButton(size: 76),
         RoundIconButton(
-          icon: Icons.fast_forward_rounded,
+          icon: Icons.skip_next_rounded,
           onPressed: player.next,
           tooltip: '下一首',
           color: Colors.white,
@@ -387,65 +561,12 @@ class _Controls extends StatelessWidget {
           iconSize: 40,
         ),
         RoundIconButton(
-          icon: one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-          onPressed: player.toggleRepeat,
-          tooltip: one ? '单曲循环' : '列表循环',
-          color: one ? Colors.white : Colors.white38,
-          size: 44,
-          iconSize: 22,
-        ),
-      ],
-    );
-  }
-}
-
-class _BottomRow extends StatelessWidget {
-  const _BottomRow({required this.lyrics, required this.onToggleLyrics});
-
-  final bool lyrics;
-  final VoidCallback onToggleLyrics;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        RoundIconButton(
-          icon: lyrics ? Icons.lyrics_rounded : Icons.lyrics_outlined,
-          onPressed: onToggleLyrics,
-          tooltip: lyrics ? '关闭歌词' : '歌词',
-          filled: lyrics,
-          background: Colors.white24,
-          color: lyrics ? Colors.white : Colors.white60,
-          size: 40,
-          iconSize: 22,
-        ),
-        RoundIconButton(
-          icon: Icons.mode_comment_outlined,
-          onPressed: () {
-            final song = PlayerScope.read(context).current;
-            if (song != null) CommentsPage.openSong(context, song);
-          },
-          tooltip: '评论',
-          color: Colors.white60,
-          size: 40,
-          iconSize: 22,
-        ),
-        RoundIconButton(
-          icon: Icons.speaker_group_outlined,
-          onPressed: () => showNotReady('播放设备'),
-          tooltip: '播放设备',
-          color: Colors.white60,
-          size: 40,
-          iconSize: 22,
-        ),
-        RoundIconButton(
-          icon: Icons.format_list_bulleted_rounded,
+          icon: Icons.queue_music_rounded,
           onPressed: () => showQueueSheet(context),
           tooltip: '播放列表',
-          color: Colors.white60,
-          size: 40,
-          iconSize: 22,
+          color: Colors.white70,
+          size: 44,
+          iconSize: 24,
         ),
       ],
     );

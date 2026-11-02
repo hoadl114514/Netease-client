@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../data/models.dart';
 import 'cookies.dart';
 import 'eapi_crypto.dart';
+import 'xeapi_crypto.dart';
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.code});
@@ -188,14 +189,28 @@ class NeteaseApi {
   }
 
   /// 取播放地址。没有版权、需要购买或会员时返回 null。
+  ///
+  /// 网易云现在只给安卓端 XEAPI 加密的请求下发无损以上的地址，先走 XEAPI；
+  /// XEAPI 本身出错（拿不到公钥、解密失败等）时退回原来的 EAPI，至少能放较低音质。
   Future<SongUrl?> songUrl(String songId, AudioQuality quality) async {
-    final payload = <String, Object?>{
-      'ids': [int.parse(songId)],
-      'level': quality.level,
-      'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
-      if (quality == AudioQuality.sky) 'immerseType': 'c51',
-    };
-    final data = await _eapi('/api/song/enhance/player/url/v1', payload);
+    const path = '/api/song/enhance/player/url/v1';
+    Map<String, Object?> data;
+    try {
+      data = await _xeapi(path, {
+        'ids': '[$songId]',
+        'level': quality.level,
+        'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
+        if (quality == AudioQuality.sky) 'immerseType': 'c51',
+      });
+    } on ApiException catch (e) {
+      if (e.code == 301) rethrow; // 登录失效，换接口也没用。
+      data = await _eapi(path, {
+        'ids': [int.parse(songId)],
+        'level': quality.level,
+        'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
+        if (quality == AudioQuality.sky) 'immerseType': 'c51',
+      });
+    }
     final entries = _list(data['data']);
     if (entries.isEmpty) return null;
     final entry = entries.first as Map;
@@ -798,6 +813,107 @@ class NeteaseApi {
     try {
       body = encryptedResponse ? EapiCrypto.decrypt(res.bodyBytes) : utf8.decode(res.bodyBytes);
     } catch (_) {
+      throw const ApiException('接口返回无法解密');
+    }
+    return _check(_decodeJson(body));
+  }
+
+  // ---------------------------------------------------------------- XEAPI
+
+  /// XEAPI 用的设备号（每次启动随机一个）和服务端公钥（首次用到时取，失效时重取）。
+  late final String _xeapiDeviceId = XeapiCrypto.newDeviceId(_random);
+  Future<XeapiPublicKey>? _xeapiKey;
+
+  static const _androidUserAgent =
+      'NeteaseMusic/9.5.61.260802021928(9005061);Dalvik/2.1.0 '
+      '(Linux; U; Android 12; HBN-AL00 Build/cd737a2.0)';
+
+  Future<XeapiPublicKey> _xeapiPublicKey() => _xeapiKey ??= _fetchXeapiKey().then(
+    (k) => k,
+    onError: (Object e, StackTrace s) {
+      _xeapiKey = null; // 失败了下次重试。
+      Error.throwWithStackTrace(e, s);
+    },
+  );
+
+  Future<XeapiPublicKey> _fetchXeapiKey() async {
+    final nonce = List.generate(16, (_) => _random.nextInt(10)).join();
+    final timestamp = '${DateTime.now().millisecondsSinceEpoch}';
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            Uri.parse('https://interface.music.163.com/api/bsr/sk/get'),
+            headers: {'User-Agent': _androidUserAgent, 'Cookie': 'deviceId=$_xeapiDeviceId'},
+            body: XeapiCrypto.registerForm(
+              deviceId: _xeapiDeviceId,
+              nonce: nonce,
+              timestamp: timestamp,
+            ),
+          )
+          .timeout(_timeout);
+    } catch (e) {
+      throw ApiException('网络请求失败：$e');
+    }
+    final data = _check(_decodeJson(utf8.decode(res.bodyBytes)))['data'];
+    if (data is! Map ||
+        data['encryptedData'] is! String ||
+        XeapiCrypto.sign('${data['timestamp']}', nonce) != data['signature']) {
+      throw const ApiException('获取加密公钥失败');
+    }
+    try {
+      return XeapiCrypto.decryptPublicKey(data['encryptedData'] as String);
+    } on FormatException {
+      throw const ApiException('获取加密公钥失败');
+    }
+  }
+
+  /// 以安卓客户端身份发一个 XEAPI 加密请求。
+  Future<Map<String, Object?>> _xeapi(String apiPath, Map<String, String> form) async {
+    final key = await _xeapiPublicKey();
+    const appver = '9.1.65', osver = '16';
+    final buildver = '${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
+    final cookie = {
+      ..._cookies,
+      'os': 'android',
+      'osver': osver,
+      'appver': appver,
+      'buildver': buildver,
+      'deviceId': _xeapiDeviceId,
+      'sDeviceId': _xeapiDeviceId,
+    };
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            Uri.parse(
+              'https://interface3.music.163.com${apiPath.replaceFirst('/api/', '/xeapi/')}',
+            ),
+            headers: {
+              'User-Agent': _androidUserAgent,
+              'X-Client-Enc-State': 'ENCRYPTED',
+              'x-aeapi': 'true',
+              'x-deviceid': _xeapiDeviceId,
+              'x-sdeviceid': _xeapiDeviceId,
+              'x-os': 'android',
+              'x-osver': osver,
+              'x-appver': appver,
+              'x-buildver': buildver,
+              'x-music-u': ?_cookies['MUSIC_U'],
+              'Cookie': encodeCookie(cookie),
+            },
+            body: XeapiCrypto.encrypt(form, key),
+          )
+          .timeout(_timeout);
+    } catch (e) {
+      throw ApiException('网络请求失败：$e');
+    }
+    if (res.statusCode != 200) throw ApiException('HTTP ${res.statusCode}', code: res.statusCode);
+    final String body;
+    try {
+      body = XeapiCrypto.decrypt(res.bodyBytes);
+    } catch (_) {
+      _xeapiKey = null; // 可能是公钥过期，下次重取。
       throw const ApiException('接口返回无法解密');
     }
     return _check(_decodeJson(body));

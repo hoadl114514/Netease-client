@@ -165,6 +165,30 @@ void main() {
     expect(player.position, Duration.zero);
   });
 
+  test('play mode button cycles list -> shuffle -> repeat-one -> list', () async {
+    await player.playQueue(queue);
+    expect(player.playMode, PlayMode.list);
+    player.cyclePlayMode();
+    expect(player.playMode, PlayMode.shuffle);
+    expect((player.shuffle, player.repeat), (true, Repeat.list));
+    player.cyclePlayMode();
+    expect(player.playMode, PlayMode.one);
+    expect((player.shuffle, player.repeat), (false, Repeat.one));
+    player.cyclePlayMode();
+    expect(player.playMode, PlayMode.list);
+    expect((player.shuffle, player.repeat), (false, Repeat.list));
+  });
+
+  test('personal FM only toggles between infinite and repeat-one', () async {
+    await player.playRadio(() async => [song('a'), song('b')], title: '私人 FM');
+    expect(player.playMode, PlayMode.list);
+    player.cyclePlayMode();
+    expect(player.playMode, PlayMode.one);
+    player.cyclePlayMode();
+    expect(player.playMode, PlayMode.list);
+    expect(player.shuffle, isFalse);
+  });
+
   test('a slow load for an old song does not override the new one', () async {
     final first = player.playQueue(queue); // 不等它。
     final second = player.jumpTo(2);
