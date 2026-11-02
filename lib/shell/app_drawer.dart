@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../app/app.dart';
+import '../data/models.dart';
 import '../pages/login_page.dart';
 import '../pages/music/nav.dart';
+import '../pages/social/messages_page.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dev_badge.dart';
@@ -155,7 +158,6 @@ class _MenuItem extends StatelessWidget {
             Icon(destination.icon, size: 28, color: AppColors.textPrimary),
             const SizedBox(width: 18),
             Text(destination.label, style: const TextStyle(fontSize: 17)),
-            if (!destination.ready) ...[const SizedBox(width: 10), const DevBadge()],
           ],
         ),
       ),
@@ -240,11 +242,43 @@ class _RoundEntry extends StatelessWidget {
   }
 }
 
-class _Messages extends StatelessWidget {
+/// 抽屉底部的私信：最近几个会话，点标题进完整列表，右上角写新私信。
+class _Messages extends StatefulWidget {
   const _Messages();
 
   @override
+  State<_Messages> createState() => _MessagesState();
+}
+
+class _MessagesState extends State<_Messages> {
+  static const _preview = 4;
+  Future<List<Conversation>>? _recent;
+  int? _userId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uid = AccountScope.of(context).profile?.userId;
+    if (uid != _userId) {
+      _userId = uid;
+      _recent = uid == null
+          ? null
+          : AppScope.of(context).api
+                .conversations(limit: _preview)
+                .then((p) => p.items.take(_preview).toList());
+    }
+  }
+
+  /// 先关抽屉，再在主界面上打开页面。
+  void _go(Future<void> Function(BuildContext context) open) {
+    final nav = Navigator.of(context);
+    nav.pop();
+    open(nav.context);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final recent = _recent;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
@@ -252,40 +286,58 @@ class _Messages extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('私信', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 8),
-              const DevBadge(),
+              InkWell(
+                onTap: () => _go(MessagesPage.open),
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                child: const Row(
+                  children: [
+                    Text('私信', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                    Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
               const Spacer(),
-              // TODO(用户主页): 私信做好后，用户主页的「私信」按钮直接打开和对方的对话。
               IconButton(
-                onPressed: () => showNotReady('私信'),
+                onPressed: () => _go((context) async {
+                  final user = await pickFollowedUser(context);
+                  if (user != null && context.mounted) await ChatPage.open(context, user);
+                }),
                 tooltip: '写私信',
                 icon: const Icon(Icons.edit_square, color: AppColors.textPrimary),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text('私信功能还在开发中。', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-          const SizedBox(height: 16),
-          InkWell(
-            onTap: () => showNotReady('私信'),
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(
-                    color: AppColors.cardHover,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.edit_square, color: AppColors.textSecondary),
-                ),
-                const SizedBox(width: 16),
-                const Text('新私信', style: TextStyle(fontSize: 15)),
-              ],
+          const SizedBox(height: 4),
+          if (recent == null)
+            const Text('登录后查看私信。', style: TextStyle(fontSize: 14, color: AppColors.textSecondary))
+          else
+            FutureBuilder<List<Conversation>>(
+              future: recent,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final items = snap.data;
+                if (items == null || items.isEmpty) {
+                  return Text(
+                    snap.hasError ? '私信加载失败，点「私信」重试。' : '还没有私信。',
+                    style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final c in items)
+                      ConversationTile(
+                        conversation: c,
+                        onTap: () => _go((context) => ChatPage.open(context, c.user)),
+                      ),
+                  ],
+                );
+              },
             ),
-          ),
         ],
       ),
     );

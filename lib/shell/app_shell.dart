@@ -8,8 +8,8 @@ import '../pages/library/liked_page.dart';
 import '../pages/music/discover_page.dart';
 import '../pages/music/ranking_page.dart';
 import '../pages/music/recent_page.dart';
-import '../pages/placeholder_page.dart';
 import '../pages/settings_page.dart';
+import '../pages/social/follow_page.dart';
 import '../state/player_controller.dart';
 import 'app_drawer.dart';
 import 'destinations.dart';
@@ -51,7 +51,8 @@ class _AppShellState extends State<AppShell> {
     Destination.recent => const RecentPage(),
     Destination.ranking => const RankingPage(),
     Destination.settings => const SettingsPage(),
-    final d => PlaceholderPage(destination: d),
+    Destination.follow => const FollowPage(),
+    Destination.updates => const MyEventsPage(),
   };
 
   void _go(Destination d) => setState(() {

@@ -71,6 +71,32 @@ MockClient _client({String? artistId, bool publicRecord = true}) => MockClient((
       'hotSongs': [for (var i = 1; i <= 5; i++) _song(i)],
     });
   }
+  if (path == '/api/event/get/100') {
+    return _json({
+      'code': 200,
+      'more': false,
+      'lasttime': 1,
+      'events': [
+        {
+          'id': 55,
+          'type': 18,
+          'eventTime': 1700000000000,
+          'user': {'userId': 100, 'nickname': '某人'},
+          'json': jsonEncode({'msg': '今天听这首', 'song': _song(3)}),
+          'info': {'likedCount': 2, 'commentCount': 1, 'threadId': 'A_EV_2_55_100'},
+        },
+      ],
+    });
+  }
+  if (path == '/api/user/getfollows/100') {
+    return _json({
+      'code': 200,
+      'more': false,
+      'follow': [
+        {'userId': 300, 'nickname': '被关注的人', 'signature': '你好', 'followed': true},
+      ],
+    });
+  }
   if (path == '/api/user/playlist') {
     return _json({
       'code': 200,
@@ -107,9 +133,11 @@ Future<void> _pump(WidgetTester tester, MockClient client, Widget page) async {
 }
 
 void main() {
-  testWidgets('a plain user only has the home tab with taste and playlists', (tester) async {
+  testWidgets('a plain user has the home and events tabs with taste and playlists', (tester) async {
     await _pump(tester, _client(publicRecord: false), const UserPage(userId: 100));
-    expect(find.byType(TabBar), findsNothing);
+    expect(find.text('主页'), findsOneWidget);
+    expect(find.text('动态'), findsOneWidget);
+    expect(find.text('全部歌曲'), findsNothing);
     expect(find.text('某人'), findsWidgets);
     expect(find.textContaining('粉丝 45'), findsOneWidget);
     expect(find.text('签名在此'), findsOneWidget);
@@ -129,6 +157,24 @@ void main() {
     await tester.tap(find.text('查看全部'));
     await tester.pumpAndSettle();
     expect(find.text('歌单6'), findsOneWidget);
+  });
+
+  testWidgets('the events tab lists the user events with the shared song', (tester) async {
+    await _pump(tester, _client(), const UserPage(userId: 100));
+    await tester.tap(find.text('动态'));
+    await tester.pumpAndSettle();
+    expect(find.text('今天听这首'), findsOneWidget);
+    expect(find.textContaining('分享单曲', findRichText: true), findsOneWidget);
+    expect(find.text('热歌3'), findsOneWidget);
+  });
+
+  testWidgets('tapping the follow count opens the follow list', (tester) async {
+    await _pump(tester, _client(), const UserPage(userId: 100));
+    await tester.tap(find.textContaining('关注 3'));
+    await tester.pumpAndSettle();
+    expect(find.text('被关注的人'), findsOneWidget);
+    expect(find.text('你好'), findsOneWidget);
+    expect(find.text('已关注'), findsOneWidget);
   });
 
   testWidgets('an artist entry merges the bound account and adds the works tabs', (tester) async {
