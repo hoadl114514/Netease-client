@@ -111,6 +111,7 @@ class Artist {
     this.description,
     this.songCount = 0,
     this.albumCount = 0,
+    this.accountId,
   });
 
   final String id;
@@ -119,6 +120,50 @@ class Artist {
   final String? description;
   final int songCount;
   final int albumCount;
+
+  /// 歌手入驻后绑定的网易云账号；没有为 null。
+  final int? accountId;
+}
+
+/// 用户主页的资料（`/api/v1/user/detail`）。
+class UserDetail {
+  const UserDetail({
+    required this.userId,
+    required this.nickname,
+    this.avatarUrl,
+    this.backgroundUrl,
+    this.signature,
+    this.identity,
+    this.level = 0,
+    this.listenSongs = 0,
+    this.follows = 0,
+    this.followeds = 0,
+    this.artistId,
+    this.playRecordPublic = true,
+  });
+
+  final int userId;
+  final String nickname;
+  final String? avatarUrl;
+  final String? backgroundUrl;
+
+  /// 个性签名。
+  final String? signature;
+
+  /// 认证说明，例如「唱作音乐人毛不易」。
+  final String? identity;
+  final int level;
+
+  /// 累计听歌数。
+  final int listenSongs;
+  final int follows;
+  final int followeds;
+
+  /// 账号绑定的歌手（音乐人）；普通用户为 null。
+  final String? artistId;
+
+  /// 是否公开听歌排行。
+  final bool playRecordPublic;
 }
 
 class Album {

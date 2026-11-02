@@ -9,7 +9,9 @@ import '../../state/account_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
+import '../../widgets/image_viewer.dart';
 import '../login_page.dart';
+import '../music/nav.dart';
 
 /// 评论区：「热门」「最新」两个标签，各自滚到底加载下一页；点评论回复，「N 条回复」展开楼中楼；
 /// 长按复制 / 回复 / 删除自己的评论；底部输入框发评论。歌曲、歌单、专辑共用。
@@ -148,11 +150,15 @@ class _ResourceHeader extends StatelessWidget {
         children: [
           SizedBox(
             width: 40,
-            child: CoverArt(
-              palette: fallbackPalette(seed),
-              seed: seed,
-              imageUrl: coverUrl,
-              radius: 6,
+            child: ViewableImage(
+              url: coverUrl,
+              title: title,
+              child: CoverArt(
+                palette: fallbackPalette(seed),
+                seed: seed,
+                imageUrl: coverUrl,
+                radius: 6,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -498,6 +504,10 @@ class _CommentTileState extends State<CommentTile> {
     final c = widget.comment;
     final reply = c.replyTo;
     final showReply = reply != null && reply.id != widget.parentId;
+    void openUserPage() {
+      if (c.user.userId > 0) openUser(context, c.user.userId, name: c.user.nickname);
+    }
+
     return InkWell(
       onTap: widget.onReply,
       onLongPress: _actions,
@@ -506,14 +516,22 @@ class _CommentTileState extends State<CommentTile> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 36,
-              child: CoverArt(
-                palette: fallbackPalette('u${c.user.userId}'),
-                seed: 'u${c.user.userId}',
-                imageUrl: c.user.avatarUrl,
-                radius: 18,
-                icon: Icons.person_rounded,
+            // 点头像 / 昵称进用户主页，长按头像看大图。
+            GestureDetector(
+              onTap: openUserPage,
+              child: SizedBox(
+                width: 36,
+                child: ViewableImage(
+                  url: c.user.avatarUrl,
+                  title: c.user.nickname,
+                  child: CoverArt(
+                    palette: fallbackPalette('u${c.user.userId}'),
+                    seed: 'u${c.user.userId}',
+                    imageUrl: c.user.avatarUrl,
+                    radius: 18,
+                    icon: Icons.person_rounded,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -527,11 +545,17 @@ class _CommentTileState extends State<CommentTile> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              c.user.nickname,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                            GestureDetector(
+                              onTap: openUserPage,
+                              child: Text(
+                                c.user.nickname,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
                             ),
                             Text(
                               [formatCommentTime(c.time), ?c.location].join(' · '),

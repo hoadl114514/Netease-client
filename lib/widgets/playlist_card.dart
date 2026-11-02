@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import 'cover_art.dart';
 import 'hover_builder.dart';
 import 'round_icon_button.dart';
+import 'image_viewer.dart';
 
 final _firstCovers = <String, Future<String?>>{};
 
@@ -75,13 +76,17 @@ class PlaylistCard extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             child: Stack(
               children: [
-                CoverArt(
-                  palette: playlist.palette,
-                  seed: playlist.id,
-                  imageUrl: playlist.coverUrl,
-                  fallbackImage: playlistCoverFallback(context, playlist),
-                  radius: AppRadius.panel,
-                  shadow: hovered ? AppShadows.heavy : null,
+                ViewableImage(
+                  url: playlist.coverUrl,
+                  title: playlist.name,
+                  child: CoverArt(
+                    palette: playlist.palette,
+                    seed: playlist.id,
+                    imageUrl: playlist.coverUrl,
+                    fallbackImage: playlistCoverFallback(context, playlist),
+                    radius: AppRadius.panel,
+                    shadow: hovered ? AppShadows.heavy : null,
+                  ),
                 ),
                 // 右上角播放量，下面垫一层渐变保证可读。
                 Positioned(
@@ -143,6 +148,44 @@ class PlaylistCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 歌单列表的一行（搜索结果、用户主页等）。
+class PlaylistTile extends StatelessWidget {
+  const PlaylistTile({super.key, required this.playlist});
+
+  final Playlist playlist;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = playlist;
+    return ListTile(
+      leading: SizedBox(
+        width: 52,
+        child: ViewableImage(
+          url: p.coverUrl,
+          title: p.name,
+          child: CoverArt(
+            palette: p.palette,
+            seed: p.id,
+            imageUrl: p.coverUrl,
+            fallbackImage: playlistCoverFallback(context, p),
+            radius: 6,
+          ),
+        ),
+      ),
+      title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        ['${p.trackCount} 首', ?p.creator].join(' · '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: AppColors.textSecondary),
+      ),
+      onTap: () =>
+          Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => PlaylistPage(playlist: p))),
     );
   }
 }

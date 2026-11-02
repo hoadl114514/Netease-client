@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/flow_background.dart';
+import '../../widgets/image_viewer.dart';
 import '../../widgets/like_button.dart';
 import '../../widgets/round_icon_button.dart';
 import '../../widgets/share.dart';
@@ -239,6 +240,9 @@ class _CoverPane extends StatelessWidget {
           child: Center(
             child: GestureDetector(
               onTap: onTapCover,
+              onLongPress: song.coverUrl == null
+                  ? null
+                  : () => ImageViewerPage.open(context, song.coverUrl!, title: song.title),
               child: Hero(
                 tag: 'now-playing-cover',
                 child: AnimatedScale(
@@ -296,12 +300,16 @@ class _LyricsPane extends StatelessWidget {
             children: [
               SizedBox.square(
                 dimension: 52,
-                child: CoverArt(
-                  palette: song.palette,
-                  seed: song.id,
-                  imageUrl: song.coverUrl,
-                  radius: 6,
-                  shadow: AppShadows.medium,
+                child: ViewableImage(
+                  url: song.coverUrl,
+                  title: song.title,
+                  child: CoverArt(
+                    palette: song.palette,
+                    seed: song.id,
+                    imageUrl: song.coverUrl,
+                    radius: 6,
+                    shadow: AppShadows.medium,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -432,7 +440,11 @@ class _CommentButtonState extends State<_CommentButton> {
           () => api
               .comments(CommentTarget.song.threadId(id), pageSize: 1)
               .then((p) => _counts[id] = p.total)
-              .whenComplete(() => _pending.remove(id)),
+              // 注意不能写成 `=> _pending.remove(id)`：remove 返回的就是这个 future 本身，
+              // whenComplete 会等它完成，自己等自己，后面的 setState 永远不会执行。
+              .whenComplete(() {
+                _pending.remove(id);
+              }),
         )
         .then((n) {
           if (mounted && widget.song.id == id) setState(() => _count = n);

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app.dart';
 import '../../data/models.dart';
+import '../../widgets/cover_art.dart';
 import '../../shell/player_bar.dart';
+import '../user/user_page.dart';
 import 'album_page.dart';
-import 'artist_page.dart';
 
 /// 二级页面统一外壳：标题栏 + 内容 + 底部迷你播放条。
 class SubPage extends StatelessWidget {
@@ -26,8 +28,13 @@ class SubPage extends StatelessWidget {
   }
 }
 
+/// 歌手主页（和绑定的账号合在一起的用户主页）。
 Future<void> openArtist(BuildContext context, ArtistRef artist) =>
-    SubPage.push(context, ArtistPage(artist: artist));
+    SubPage.push(context, UserPage(artist: artist, name: artist.name));
+
+/// 用户主页，例如点评论区的头像 / 昵称、歌单创建者。
+Future<void> openUser(BuildContext context, int userId, {String? name}) =>
+    SubPage.push(context, UserPage(userId: userId, name: name));
 
 Future<void> openAlbum(BuildContext context, String albumId, {String? name}) =>
     SubPage.push(context, AlbumPage(albumId: albumId, name: name));
@@ -56,7 +63,17 @@ Future<ArtistRef?> pickSongArtist(BuildContext context, Song song) async {
           ),
           for (final a in artists)
             ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
+              leading: SizedBox(
+                width: 40,
+                child: CoverArt(
+                  palette: fallbackPalette(a.id),
+                  seed: a.id,
+                  radius: 20,
+                  icon: Icons.person_rounded,
+                  // 歌曲里只有歌手名和 id，头像另外取（有缓存）。
+                  fallbackImage: () => AppScope.of(context).api.artistAvatar(a.id),
+                ),
+              ),
               title: Text(a.name),
               onTap: () => Navigator.of(context).pop(a),
             ),
