@@ -1,6 +1,8 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:netease_client/api/netease_api.dart';
 import 'package:netease_client/audio/system_media.dart';
+import 'package:netease_client/state/account_controller.dart';
 import 'package:netease_client/state/player_controller.dart';
 
 import 'support/fakes.dart';
@@ -9,6 +11,7 @@ void main() {
   late FakeEngine engine;
   late PlayerController player;
   late SystemMediaBridge bridge;
+  late AccountController account;
   final queue = [song('1'), song('2')];
 
   setUp(() async {
@@ -18,7 +21,8 @@ void main() {
       backend: FakeBackend(),
       settings: await testSettings(),
     );
-    bridge = SystemMediaBridge(player);
+    account = AccountController(api: NeteaseApi(), settings: await testSettings());
+    bridge = SystemMediaBridge(player, account);
   });
   tearDown(() => player.dispose());
 
@@ -59,5 +63,25 @@ void main() {
     expect(bridge.mediaItem.value?.id, '2');
     await bridge.seek(const Duration(seconds: 30));
     expect(player.position, const Duration(seconds: 30));
+  });
+
+  test('the notification shows a like button instead of stop', () async {
+    await player.playQueue(queue);
+    final controls = bridge.playbackState.value.controls;
+    expect(controls, isNot(contains(MediaControl.stop)));
+    final like = controls.last;
+    expect(like.action, MediaAction.custom);
+    expect(like.customAction?.name, SystemMediaBridge.likeAction);
+    expect(like.label, '喜欢');
+  });
+
+  test('tapping like while logged out tells the user to log in', () async {
+    await player.playQueue(queue);
+    final notices = <String>[];
+    final sub = player.notices.listen(notices.add);
+    await bridge.customAction(SystemMediaBridge.likeAction);
+    await pumpEventQueue();
+    expect(notices, ['登录后才能收藏歌曲']);
+    await sub.cancel();
   });
 }

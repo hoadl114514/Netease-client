@@ -34,16 +34,26 @@ Future<void> openAlbum(BuildContext context, String albumId, {String? name}) =>
 
 /// 一首歌有多位歌手时先选一位。
 Future<void> openSongArtist(BuildContext context, Song song) async {
+  final picked = await pickSongArtist(context, song);
+  if (picked != null && context.mounted) await openArtist(context, picked);
+}
+
+/// 选一位歌手：只有一位时直接返回，多位时弹底部面板让用户选，取消返回 null。
+Future<ArtistRef?> pickSongArtist(BuildContext context, Song song) async {
   final artists = song.artists;
-  if (artists.isEmpty) return;
-  if (artists.length == 1) return openArtist(context, artists.first);
-  final picked = await showModalBottomSheet<ArtistRef>(
+  if (artists.isEmpty) return null;
+  if (artists.length == 1) return artists.first;
+  return showModalBottomSheet<ArtistRef>(
     context: context,
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('选择要查看的歌手', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
           for (final a in artists)
             ListTile(
               leading: const Icon(Icons.person_outline_rounded),
@@ -54,5 +64,4 @@ Future<void> openSongArtist(BuildContext context, Song song) async {
       ),
     ),
   );
-  if (picked != null && context.mounted) await openArtist(context, picked);
 }

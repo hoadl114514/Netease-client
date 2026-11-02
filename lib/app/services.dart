@@ -28,14 +28,10 @@ class AppServices {
       backend: NeteaseBackend(api, lyrics),
       settings: settings,
     );
+    final account = AccountController(api: api, settings: settings);
     // 注册系统媒体会话（Android 前台服务 + 通知、iOS 锁屏），保证后台持续播放。
-    await SystemMediaBridge.register(player);
-    return AppServices(
-      settings: settings,
-      api: api,
-      account: AccountController(api: api, settings: settings),
-      player: player,
-    );
+    await SystemMediaBridge.register(player, account);
+    return AppServices(settings: settings, api: api, account: account, player: player);
   }
 
   final AppSettings settings;

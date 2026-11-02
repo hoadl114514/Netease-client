@@ -54,6 +54,17 @@ class NeteaseBackend implements PlaybackBackend {
 
 enum Repeat { list, one }
 
+/// 播放页上合成一个按钮的播放模式。私人 FM 下只有 [list]（显示为「∞」）和 [one]。
+enum PlayMode {
+  list('列表循环'),
+  shuffle('随机播放'),
+  one('单曲循环');
+
+  const PlayMode(this.label);
+
+  final String label;
+}
+
 /// 播放器状态：队列、进度、音质、歌词。
 ///
 /// 每次切歌递增 [_token]；异步结果回来时 token 已变说明用户又切了歌，直接丢弃。
@@ -123,6 +134,9 @@ class PlayerController extends ChangeNotifier {
 
   /// 给用户看的提示（切歌失败、试听、音质降级等），由界面弹 SnackBar。
   Stream<String> get notices => _notices.stream;
+
+  /// 从界面以外的地方（例如通知栏按钮）给用户弹一条提示。
+  void notice(String message) => _notices.add(message);
 
   Song? get current => _index >= 0 && _index < _queue.length ? _queue[_index] : null;
 
@@ -306,6 +320,27 @@ class PlayerController extends ChangeNotifier {
 
   void toggleRepeat() {
     _repeat = _repeat == Repeat.list ? Repeat.one : Repeat.list;
+    notifyListeners();
+  }
+
+  /// 当前播放模式：单曲循环优先于随机。
+  PlayMode get playMode => _repeat == Repeat.one
+      ? PlayMode.one
+      : _shuffle
+      ? PlayMode.shuffle
+      : PlayMode.list;
+
+  /// 按 列表循环 → 随机播放 → 单曲循环 → 列表循环 切换；私人 FM 下只在「∞」和单曲循环之间切换。
+  void cyclePlayMode() {
+    final next = switch (playMode) {
+      PlayMode.list => isRadio ? PlayMode.one : PlayMode.shuffle,
+      PlayMode.shuffle => PlayMode.one,
+      PlayMode.one => PlayMode.list,
+    };
+    final shuffle = next == PlayMode.shuffle;
+    if (shuffle != _shuffle) _history.clear();
+    _shuffle = shuffle;
+    _repeat = next == PlayMode.one ? Repeat.one : Repeat.list;
     notifyListeners();
   }
 

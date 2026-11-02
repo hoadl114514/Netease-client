@@ -5,4 +5,4 @@
   会抛异常，播放状态发不到系统，媒体会话不激活、通知不出现。这里显式保留。
 -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/audio_service_*,@drawable/ic_stat_music" />
+    tools:keep="@drawable/audio_service_*,@drawable/ic_stat_music,@drawable/ic_notif_like,@drawable/ic_notif_liked" />
