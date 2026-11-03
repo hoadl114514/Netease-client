@@ -16,7 +16,12 @@ void main() {
     engine = FakeEngine();
     backend = FakeBackend();
     settings = await testSettings();
-    player = PlayerController(engine: engine, backend: backend, settings: settings);
+    player = PlayerController(
+      engine: engine,
+      backend: backend,
+      settings: settings,
+      retryDelays: const [Duration(milliseconds: 1), Duration(milliseconds: 1)],
+    );
   });
   tearDown(() => player.dispose());
 
@@ -88,6 +93,60 @@ void main() {
     await pumpEventQueue();
     // 三首都不能放：试过一圈后停下，不无限循环。
     expect(player.isPlaying, isFalse);
+  });
+
+  test('a flaky song URL request is retried', () async {
+    backend.urlFailures['1'] = 2;
+    await player.playQueue(queue);
+    expect(backend.urlRequests.where((r) => r.$1 == '1'), hasLength(3));
+    expect(engine.loaded.single, contains('/1/'));
+    expect(player.isPlaying, isTrue);
+  });
+
+  test('a failed audio load is retried with a fresh URL', () async {
+    engine.failLoads = 1;
+    await player.playQueue(queue);
+    expect(backend.urlRequests, hasLength(2));
+    expect(engine.loaded.single, contains('/1/'));
+    expect(player.isPlaying, isTrue);
+  });
+
+  test('play after a failed load reloads the current song, not the previous one', () async {
+    await player.playQueue(queue);
+    expect(engine.loaded.single, contains('/1/'));
+
+    // 第二首三次都加载失败：停下并提示，内核里还留着第一首。
+    final notices = <String>[];
+    player.notices.listen(notices.add);
+    engine.failLoads = 3;
+    await player.next();
+    await pumpEventQueue();
+    expect(player.song.id, '2');
+    expect(player.isPlaying, isFalse);
+    expect(notices, isNotEmpty);
+    expect(engine.loaded, hasLength(1));
+
+    // 再点播放：重新加载第二首，而不是接着放内核里的第一首。
+    await player.toggle();
+    expect(engine.loaded.last, contains('/2/'));
+    expect(player.song.id, '2');
+    expect(player.isPlaying, isTrue);
+  });
+
+  test('an error mid-playback reloads the song where it stopped', () async {
+    await player.playQueue(queue);
+    engine.advance(const Duration(seconds: 50));
+    await player.pause();
+    await player.play();
+    // 进度由计时器同步；这里直接用 seek 设好。
+    await player.seek(const Duration(seconds: 50));
+    engine.error(Exception('connection lost'));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await pumpEventQueue();
+    expect(engine.loaded, hasLength(2));
+    expect(engine.loaded.last, contains('/1/'));
+    expect(engine.loadStart, const Duration(seconds: 50));
+    expect(player.isPlaying, isTrue);
   });
 
   test('lyrics load with fallback, and source switch keeps old lyrics when empty', () async {

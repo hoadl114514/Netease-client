@@ -233,7 +233,7 @@ void main() {
   test('message history is sorted old to new and pages by time', () async {
     final seen = <http.Request>[];
     final api = _api({
-      '/api/msg/private/history': {
+      '/weapi/msg/private/history': {
         'code': 200,
         'more': true,
         'msgs': [
@@ -256,13 +256,48 @@ void main() {
       },
     }, seen: seen);
     final h = await api.messageHistory(9, before: DateTime.fromMillisecondsSinceEpoch(5000));
-    expect(seen.single.bodyFields['time'], '5000');
-    expect(seen.single.bodyFields['userId'], '9');
+    // 走网页端 WEAPI（会顺带标成已读），参数是加密的。
+    expect(seen.single.url.path, '/weapi/msg/private/history');
+    expect(seen.single.bodyFields.keys, containsAll(['params', 'encSecKey']));
     expect(h.more, isTrue);
     expect([for (final m in h.messages) m.id], [1, 2]);
     expect(h.messages.first.imageUrl, 'https://p1.music.126.net/i.jpg');
     expect(h.messages.last.text, '后');
     expect(h.messages.last.fromUserId, 1);
+  });
+
+  test('message history falls back to the plain API when WEAPI fails', () async {
+    final seen = <http.Request>[];
+    final api = NeteaseApi(
+      cookies: const {'MUSIC_U': 'u'},
+      client: MockClient((r) async {
+        seen.add(r);
+        if (r.url.path.startsWith('/weapi/')) return http.Response('busy', 503);
+        return http.Response(
+          jsonEncode({
+            'code': 200,
+            'more': false,
+            'msgs': [
+              {
+                'id': 1,
+                'time': 1000,
+                'fromUser': _user(9),
+                'msg': jsonEncode({'msg': '在'}),
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    final h = await api.messageHistory(9);
+    expect(
+      [for (final r in seen) r.url.path],
+      ['/weapi/msg/private/history', '/api/msg/private/history'],
+    );
+    expect(seen.last.bodyFields['userId'], '9');
+    expect(h.messages.single.text, '在');
   });
 
   test('sending a message goes through EAPI', () async {

@@ -282,19 +282,28 @@ class NeteaseApi {
 
   /// 歌单信息和全部歌曲。
   Future<({Playlist playlist, List<Song> tracks})> playlistDetail(String id) async {
-    final data = await _api('https://music.163.com/api/v6/playlist/detail', {'id': id, 'n': '0'});
-    final raw = data['playlist'];
-    final playlist = raw is Map ? _parsePlaylist(raw) : null;
-    if (playlist == null) throw const ApiException('歌单不存在或无权查看');
-    final ids = [
-      for (final t in _list((raw as Map)['trackIds']))
-        if (t is Map && t['id'] != null) '${t['id']}',
-    ];
+    final (:playlist, :ids) = await playlistTrackIds(id);
     final tracks = await songDetails(ids);
     // 没有封面的歌单用第一首歌的封面，和官方客户端一致。
     final cover =
         playlist.coverUrl ?? tracks.where((t) => t.coverUrl != null).firstOrNull?.coverUrl;
     return (playlist: playlist.withCover(cover), tracks: tracks);
+  }
+
+  /// 歌单信息和全部歌曲的 id（按歌单顺序）。只一个请求，比取全部歌曲详情快得多，
+  /// 用来和本地缓存比对增删。
+  Future<({Playlist playlist, List<String> ids})> playlistTrackIds(String id) async {
+    final data = await _api('https://music.163.com/api/v6/playlist/detail', {'id': id, 'n': '0'});
+    final raw = data['playlist'];
+    final playlist = raw is Map ? _parsePlaylist(raw) : null;
+    if (playlist == null) throw const ApiException('歌单不存在或无权查看');
+    return (
+      playlist: playlist,
+      ids: [
+        for (final t in _list((raw as Map)['trackIds']))
+          if (t is Map && t['id'] != null) '${t['id']}',
+      ],
+    );
   }
 
   /// 歌单第一首歌的封面：歌单本身没有封面或封面加载失败时用它代替。只取一首，不拉全部歌曲。
@@ -668,13 +677,23 @@ class NeteaseApi {
   }
 
   /// 和 [userId] 的私信记录。[before] 传当前最早一条的时间取更早的，第一页传 null。
+  ///
+  /// 走网页端的 WEAPI：网页端打开对话就是调这个，服务端会顺带把这个会话标成已读；
+  /// 明文 `/api/` 只读记录不清未读，退出对话后红点还在。WEAPI 失败时退回明文接口。
   Future<MessageHistory> messageHistory(int userId, {DateTime? before, int limit = 30}) async {
-    final data = await _api('https://music.163.com/api/msg/private/history', {
+    final form = {
       'userId': '$userId',
       'limit': '$limit',
       'time': '${before?.millisecondsSinceEpoch ?? 0}',
       'total': 'true',
-    });
+    };
+    Map<String, Object?> data;
+    try {
+      data = await _weapi('/api/msg/private/history', form);
+    } on ApiException catch (e) {
+      if (e.needsLogin) rethrow;
+      data = await _api('https://music.163.com/api/msg/private/history', form);
+    }
     final messages = [for (final m in _list(data['msgs'])) ?parsePrivateMessage(m)]
       ..sort((a, b) => a.time.compareTo(b.time));
     return MessageHistory(messages: messages, more: data['more'] == true);

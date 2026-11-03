@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../api/netease_api.dart';
+import 'retry_image.dart';
 
 /// 从封面图里取几个主色，按像素占比从高到低。结果按地址缓存。
 abstract final class CoverPalette {
@@ -11,7 +12,7 @@ abstract final class CoverPalette {
 
   static Future<List<Color>?> of(String url) => _cache.putIfAbsent(
     url,
-    () => _extract(NetworkImage(sizedImage(url, 48))).catchError((_) => null),
+    () => _extract(RetryNetworkImage(sizedImage(url, 48))).catchError((_) => null),
   );
 
   static Future<List<Color>?> _extract(ImageProvider provider) async {

@@ -21,11 +21,21 @@ class FakeEngine implements AudioEngine {
   final _completed = StreamController<void>.broadcast();
   final _errors = StreamController<Object>.broadcast();
 
+  /// 接下来这么多次 load 直接失败（模拟 Source error）。
+  int failLoads = 0;
+
   void advance(Duration d) => _position += d;
   void complete() => _completed.add(null);
 
+  /// 模拟播放中途出错。
+  void error(Object e) => _errors.add(e);
+
   @override
   Future<void> load(String url, {Duration start = Duration.zero}) async {
+    if (failLoads > 0) {
+      failLoads--;
+      throw Exception('(0) Source error');
+    }
     loaded.add(url);
     loadStart = start;
     _position = start;
@@ -69,6 +79,9 @@ class FakeBackend implements PlaybackBackend {
   /// 这些歌取不到地址（无版权）。
   final unavailable = <String>{};
 
+  /// 这些歌接下来取地址时先网络失败几次。
+  final urlFailures = <String, int>{};
+
   /// 这些歌只能试听。
   final trials = <String, ({Duration start, Duration end})>{};
   final lyricsMap = <(String, LyricSource), Lyrics>{};
@@ -92,6 +105,11 @@ class FakeBackend implements PlaybackBackend {
   @override
   Future<SongUrl?> songUrl(String songId, AudioQuality quality) async {
     urlRequests.add((songId, quality));
+    final failures = urlFailures[songId] ?? 0;
+    if (failures > 0) {
+      urlFailures[songId] = failures - 1;
+      throw const ApiException('网络请求失败：Connection reset');
+    }
     if (unavailable.contains(songId)) return null;
     final actual = quality.index > accountMax.index ? accountMax : quality;
     return SongUrl(

@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../api/netease_api.dart';
 import '../audio/audio_engine.dart';
 import '../data/models.dart';
+import '../data/retry.dart';
 import '../lyrics/lyric_service.dart';
 import '../widgets/cover_palette.dart';
 import 'settings.dart';
@@ -69,12 +70,20 @@ enum PlayMode {
 ///
 /// 每次切歌递增 [_token]；异步结果回来时 token 已变说明用户又切了歌，直接丢弃。
 class PlayerController extends ChangeNotifier {
-  PlayerController({required this._engine, required this._backend, required this._settings}) {
+  PlayerController({
+    required this._engine,
+    required this._backend,
+    required this._settings,
+    this.retryDelays = defaultRetryDelays,
+  }) {
     _subs = [
       _engine.completed.listen((_) => _onCompleted()),
-      _engine.errors.listen((e) => _fail('播放出错：$e')),
+      _engine.errors.listen(_onEngineError),
     ];
   }
+
+  /// 取播放地址、加载音频失败时的重试间隔，重试次数就是它的长度。
+  final List<Duration> retryDelays;
 
   static const _tick = Duration(milliseconds: 50);
 
@@ -108,6 +117,14 @@ class PlayerController extends ChangeNotifier {
 
   /// 加载完成后是否自动播放。
   bool _wantPlay = false;
+
+  /// 播放内核里装的是不是当前这首。加载失败时内核里可能还留着上一首，
+  /// 这时点播放要重新加载，不能直接 play（否则会放出上一首）。
+  bool _ready = false;
+
+  /// 当前这首播放中途出错后已经自动重试了几次。换歌时清零。
+  int _errorRetries = 0;
+  Timer? _retryTimer;
   Duration _lyricOffset = Duration.zero;
   double _volume = 1;
   bool _shuffle = false;
@@ -380,13 +397,17 @@ class PlayerController extends ChangeNotifier {
     bool keepLyrics = false,
   }) async {
     final token = ++_token;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _wantPlay = autoplay ?? true;
     final changingSong = index != _index;
     if (changingSong) {
       _reportListened();
       _songToken++;
+      _errorRetries = 0;
     }
     _index = index;
+    _ready = false;
     final song = this.song;
     _position = startAt;
     _loading = true;
@@ -427,7 +448,17 @@ class PlayerController extends ChangeNotifier {
       }
       final preferred = _settings.preferredQuality;
       final target = AudioQuality.pick(_qualities.map((q) => q.quality), preferred) ?? preferred;
-      final url = await _backend.songUrl(song.id, target);
+      // 网络抖动、地址失效、音频没取下来都自动重试；每次重新取地址，免得拿着过期的链接反复试。
+      final url = await withRetry(
+        () async {
+          final url = await _backend.songUrl(song.id, target);
+          if (url != null && token == _token) await _engine.load(url.url, start: startAt);
+          return url;
+        },
+        delays: retryDelays,
+        retryIf: (e) => token == _token && _isRetryable(e),
+        shouldStop: () => token != _token,
+      );
       if (token != _token) return;
       if (url == null) {
         _loading = false;
@@ -445,8 +476,7 @@ class PlayerController extends ChangeNotifier {
       } else if (_quality != null && _quality!.index < target.index) {
         _notices.add('当前账号最高可用 ${_quality!.label}');
       }
-      await _engine.load(url.url, start: startAt);
-      if (token != _token) return;
+      _ready = true;
       _failStreak = 0;
       _loading = false;
       if (_wantPlay) {
@@ -507,7 +537,40 @@ class PlayerController extends ChangeNotifier {
     unawaited(_backend.startPlay(song, sourceId: _sourceId).catchError((Object _) {}));
   }
 
+  /// 接口明确拒绝（未登录、无权限等）就别重试了；断网、超时、5xx 和播放内核的错误都值得再试。
+  static bool _isRetryable(Object e) {
+    if (e is ApiException) {
+      final code = e.code;
+      return code == null || code >= 500 || code == 408 || code == 429;
+    }
+    return true;
+  }
+
+  /// 播放中途出错（断网、解码失败等）：从出错的位置重新加载，几次都不行再报错。
+  void _onEngineError(Object e) {
+    // 加载过程中的错误由 _load 自己处理。
+    if (_loading || current == null) return;
+    _ready = false;
+    if (_errorRetries >= retryDelays.length) {
+      _fail('播放出错：$e');
+      return;
+    }
+    final delay = retryDelays[_errorRetries++];
+    // 等待重试期间按「加载中」处理：界面转圈，暂停 / 播放只改加载完后要不要接着放。
+    _wantPlay = _playing;
+    _playing = false;
+    _loading = true;
+    _stopTicker();
+    notifyListeners();
+    _retryTimer?.cancel();
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      unawaited(_load(_index, startAt: _position, autoplay: _wantPlay, keepLyrics: true));
+    });
+  }
+
   void _fail(String message) {
+    _ready = false;
     _loading = false;
     _playing = false;
     _stopTicker();
@@ -523,6 +586,12 @@ class PlayerController extends ChangeNotifier {
       // 加载完成后自动开始。
       _wantPlay = true;
       notifyListeners();
+      return;
+    }
+    if (!_ready) {
+      // 上次加载失败了，内核里不是这首（可能还是上一首），重新加载这首再放。
+      _errorRetries = 0;
+      await _load(_index, startAt: _position, autoplay: true, keepLyrics: true);
       return;
     }
     await _startPlayback();
@@ -609,6 +678,7 @@ class PlayerController extends ChangeNotifier {
   @override
   void dispose() {
     _stopTicker();
+    _retryTimer?.cancel();
     _sleepTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
