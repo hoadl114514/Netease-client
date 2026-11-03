@@ -20,10 +20,13 @@ class PlaylistView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = playlist;
-    final api = AppScope.of(context).api;
+    final tracks = AppScope.of(context).tracks;
+    // 自己的歌单（含「我喜欢」）和收藏的歌单存本地缓存：先显示缓存，后台比对增删。
+    final account = AccountScope.read(context);
+    final cache = account.playlists.any((x) => x.id == p.id);
     return TrackListView(
       reloadKey: p.id,
-      load: () async => (await api.playlistDetail(p.id)).tracks,
+      watch: (force) => tracks.watch(p.id, cache: cache, force: force),
       queueTitle: p.name,
       sourceId: p.id,
       emptyText: '歌单是空的',

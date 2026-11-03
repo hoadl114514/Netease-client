@@ -282,19 +282,28 @@ class NeteaseApi {
 
   /// 歌单信息和全部歌曲。
   Future<({Playlist playlist, List<Song> tracks})> playlistDetail(String id) async {
-    final data = await _api('https://music.163.com/api/v6/playlist/detail', {'id': id, 'n': '0'});
-    final raw = data['playlist'];
-    final playlist = raw is Map ? _parsePlaylist(raw) : null;
-    if (playlist == null) throw const ApiException('歌单不存在或无权查看');
-    final ids = [
-      for (final t in _list((raw as Map)['trackIds']))
-        if (t is Map && t['id'] != null) '${t['id']}',
-    ];
+    final (:playlist, :ids) = await playlistTrackIds(id);
     final tracks = await songDetails(ids);
     // 没有封面的歌单用第一首歌的封面，和官方客户端一致。
     final cover =
         playlist.coverUrl ?? tracks.where((t) => t.coverUrl != null).firstOrNull?.coverUrl;
     return (playlist: playlist.withCover(cover), tracks: tracks);
+  }
+
+  /// 歌单信息和全部歌曲的 id（按歌单顺序）。只一个请求，比取全部歌曲详情快得多，
+  /// 用来和本地缓存比对增删。
+  Future<({Playlist playlist, List<String> ids})> playlistTrackIds(String id) async {
+    final data = await _api('https://music.163.com/api/v6/playlist/detail', {'id': id, 'n': '0'});
+    final raw = data['playlist'];
+    final playlist = raw is Map ? _parsePlaylist(raw) : null;
+    if (playlist == null) throw const ApiException('歌单不存在或无权查看');
+    return (
+      playlist: playlist,
+      ids: [
+        for (final t in _list((raw as Map)['trackIds']))
+          if (t is Map && t['id'] != null) '${t['id']}',
+      ],
+    );
   }
 
   /// 歌单第一首歌的封面：歌单本身没有封面或封面加载失败时用它代替。只取一首，不拉全部歌曲。

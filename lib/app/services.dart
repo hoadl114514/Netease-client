@@ -2,6 +2,7 @@ import '../api/cookies.dart';
 import '../api/netease_api.dart';
 import '../audio/audio_engine.dart';
 import '../audio/system_media.dart';
+import '../data/track_cache.dart';
 import '../lyrics/lyric_service.dart';
 import '../lyrics/qq_lyrics.dart';
 import '../state/account_controller.dart';
@@ -15,7 +16,8 @@ class AppServices {
     required this.api,
     required this.account,
     required this.player,
-  });
+    PlaylistTracks? tracks,
+  }) : tracks = tracks ?? PlaylistTracks(api);
 
   /// 正式环境：真实网络 + just_audio。
   static Future<AppServices> create() async {
@@ -31,13 +33,22 @@ class AppServices {
     final account = AccountController(api: api, settings: settings);
     // 注册系统媒体会话（Android 前台服务 + 通知、iOS 锁屏），保证后台持续播放。
     await SystemMediaBridge.register(player, account);
-    return AppServices(settings: settings, api: api, account: account, player: player);
+    return AppServices(
+      settings: settings,
+      api: api,
+      account: account,
+      player: player,
+      tracks: PlaylistTracks(api, store: FileTrackStore()),
+    );
   }
 
   final AppSettings settings;
   final NeteaseApi api;
   final AccountController account;
   final PlayerController player;
+
+  /// 歌单歌曲（带本地缓存）。
+  final PlaylistTracks tracks;
 
   void dispose() {
     player.dispose();

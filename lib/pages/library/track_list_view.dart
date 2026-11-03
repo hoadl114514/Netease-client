@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../api/netease_api.dart';
+import '../../app/app.dart';
 import '../../data/models.dart';
 import '../../state/player_controller.dart';
 import '../../theme/app_theme.dart';
@@ -13,7 +16,8 @@ import '../../widgets/song_tile.dart';
 class TrackListView extends StatefulWidget {
   const TrackListView({
     super.key,
-    required this.load,
+    this.load,
+    this.watch,
     required this.queueTitle,
     required this.header,
     this.reloadKey,
@@ -23,7 +27,11 @@ class TrackListView extends StatefulWidget {
     this.searchable = true,
   });
 
-  final Future<List<Song>> Function() load;
+  /// 取歌曲列表。和 [watch] 二选一。
+  final Future<List<Song>> Function()? load;
+
+  /// 歌曲列表会先后发来几次（先缓存、再同步后的）。[force] 为 true 表示下拉刷新。
+  final Stream<List<Song>> Function(bool force)? watch;
 
   /// 播放时的队列标题。
   final String queueTitle;
@@ -49,12 +57,25 @@ class TrackListView extends StatefulWidget {
 }
 
 class _TrackListViewState extends State<TrackListView> {
-  late Future<List<Song>> _tracks = widget.load();
   final _search = TextEditingController();
   String _query = '';
 
+  List<Song>? _tracks;
+  Object? _error;
+
+  /// 还在取（有缓存时是在后台同步）。
+  bool _loading = true;
+  StreamSubscription<List<Song>>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
   @override
   void dispose() {
+    _sub?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -62,12 +83,50 @@ class _TrackListViewState extends State<TrackListView> {
   @override
   void didUpdateWidget(TrackListView old) {
     super.didUpdateWidget(old);
-    if (old.reloadKey != widget.reloadKey) _tracks = widget.load();
+    if (old.reloadKey != widget.reloadKey) {
+      _tracks = null;
+      _start();
+    }
   }
 
-  Future<void> _reload() async {
-    setState(() => _tracks = widget.load());
-    await _tracks.catchError((_) => <Song>[]);
+  Stream<List<Song>> _source(bool force) =>
+      widget.watch?.call(force) ?? Stream.fromFuture(widget.load!());
+
+  /// 开始加载，返回的 Future 在这一轮结束（成功或失败）时完成。
+  Future<void> _start({bool force = false}) {
+    _sub?.cancel();
+    _error = null;
+    _loading = true;
+    final done = Completer<void>();
+    _sub = _source(force).listen(
+      (tracks) {
+        if (mounted) setState(() => _tracks = tracks);
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          // 已经显示着缓存时不盖掉列表，只提示一下。
+          if (_tracks == null) {
+            _error = e;
+          } else {
+            AppScope.toast('刷新失败：${e is ApiException ? e.message : e}');
+          }
+        });
+        if (!done.isCompleted) done.complete();
+      },
+      onDone: () {
+        if (mounted) setState(() => _loading = false);
+        if (!done.isCompleted) done.complete();
+      },
+      cancelOnError: true,
+    );
+    return done.future;
+  }
+
+  Future<void> _reload() {
+    setState(() {});
+    return _start(force: true);
   }
 
   void _play(List<Song> tracks, int i) =>
@@ -76,11 +135,11 @@ class _TrackListViewState extends State<TrackListView> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Song>>(
-      future: _tracks,
-      builder: (context, snap) {
-        final tracks = snap.data ?? const <Song>[];
-        final loaded = snap.connectionState == ConnectionState.done && !snap.hasError;
+    return Builder(
+      builder: (context) {
+        final tracks = _tracks ?? const <Song>[];
+        final loaded = _tracks != null;
+        final error = _error;
         // 搜索时只显示匹配的行，序号和点播放仍按完整列表。
         final shown = _query.isEmpty
             ? null
@@ -110,15 +169,18 @@ class _TrackListViewState extends State<TrackListView> {
                     onChanged: (v) => setState(() => _query = v.trim()),
                   ),
                 ),
-              if (snap.connectionState != ConnectionState.done)
+              // 先显示着缓存、后台还在同步：头部下面一条细进度条。
+              if (loaded && _loading)
+                const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
+              if (!loaded && error != null)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: ErrorState(error: error, onRetry: _reload),
+                )
+              else if (!loaded)
                 const SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(child: CircularProgressIndicator()),
-                )
-              else if (snap.hasError)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: ErrorState(error: snap.error!, onRetry: _reload),
                 )
               else if (tracks.isEmpty)
                 SliverFillRemaining(

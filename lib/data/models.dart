@@ -36,6 +36,45 @@ class Song {
 
   List<Color> get palette => _palette ?? fallbackPalette(id);
 
+  /// 存本地缓存用。封面主色不存，读回来用占位色。
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'title': title,
+    'artist': artist,
+    'album': album,
+    'ms': duration.inMilliseconds,
+    if (coverUrl != null) 'cover': coverUrl,
+    if (subtitle != null) 'sub': subtitle,
+    if (albumId != null) 'albumId': albumId,
+    if (artists.isNotEmpty)
+      'artists': [
+        for (final a in artists) [a.id, a.name],
+      ],
+  };
+
+  /// [toJson] 的逆操作；格式不对时返回 null。
+  static Song? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'], title = json['title'];
+    if (id is! String || title is! String) return null;
+    final ms = json['ms'];
+    return Song(
+      id: id,
+      title: title,
+      artist: json['artist'] as String? ?? '',
+      album: json['album'] as String? ?? '',
+      duration: Duration(milliseconds: ms is int ? ms : 0),
+      coverUrl: json['cover'] as String?,
+      subtitle: json['sub'] as String?,
+      albumId: json['albumId'] as String?,
+      artists: [
+        for (final a in json['artists'] as List? ?? const [])
+          if (a is List && a.length == 2 && a[0] is String && a[1] is String)
+            ArtistRef(a[0] as String, a[1] as String),
+      ],
+    );
+  }
+
   @override
   bool operator ==(Object other) => other is Song && other.id == id;
 
