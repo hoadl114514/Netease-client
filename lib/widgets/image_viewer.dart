@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../api/netease_api.dart';
 import '../app/app.dart';
+import 'retry_image.dart';
 
 const _channel = MethodChannel('netease_client/share');
 
@@ -174,15 +175,15 @@ class _ImageViewerPageState extends State<ImageViewerPage> with SingleTickerProv
 
   /// 先显示已缓存的小图，原图加载好后替换。
   Widget _image() {
-    final preview = Image.network(
-      widget.url,
+    final preview = Image(
+      image: retryImage(widget.url),
       fit: BoxFit.contain,
       gaplessPlayback: true,
       errorBuilder: (_, _, _) =>
           const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
     );
-    return Image.network(
-      _original,
+    return Image(
+      image: retryImage(_original),
       fit: BoxFit.contain,
       gaplessPlayback: true,
       loadingBuilder: (context, child, progress) {

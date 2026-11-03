@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../api/netease_api.dart';
 import 'backdrop_color.dart';
+import 'retry_image.dart';
 
 /// 播放页的"流光"背景：几份封面色块缓慢反向旋转、叠在一起，上面压一层暗色保证白字可读。
 ///
@@ -86,7 +87,7 @@ class _FlowBackgroundState extends State<FlowBackground> with SingleTickerProvid
     if (url == _loadedUrl) return;
     _loadedUrl = url;
     _unlisten();
-    final stream = NetworkImage(sizedImage(url, 96)).resolve(ImageConfiguration.empty);
+    final stream = RetryNetworkImage(sizedImage(url, 96)).resolve(ImageConfiguration.empty);
     final listener = ImageStreamListener(
       (info, _) {
         if (_loadedUrl == url) unawaited(_bake(info.image.clone()));

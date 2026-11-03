@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/netease_api.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/retry_image.dart';
 
 /// 用户头像。登录后显示账号头像（加载前显示昵称首字），未登录显示人形图标。
 class UserAvatar extends StatelessWidget {
@@ -35,8 +36,8 @@ class UserAvatar extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: switch (profile?.avatarUrl) {
-        final url? => Image.network(
-          sizedImage(url, px),
+        final url? => Image(
+          image: retryImage(sizedImage(url, px)),
           width: size,
           height: size,
           fit: BoxFit.cover,

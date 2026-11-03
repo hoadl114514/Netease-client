@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../api/netease_api.dart';
+import 'retry_image.dart';
 
 /// 封面。有 [imageUrl] 时加载网络图片，加载中或失败时显示用 [palette] 画的占位图；
 /// 同一个 [seed] 总是画出同一张占位图。
@@ -143,13 +144,15 @@ class _CoverArtState extends State<CoverArt> {
                       fit: StackFit.expand,
                       children: [
                         placeholder,
-                        Image.network(
-                          sized ? sizedImage(url, bucket) : url,
+                        Image(
+                          // 原图可能很大，解码时按显示尺寸缩小。
+                          image: retryImage(
+                            sized ? sizedImage(url, bucket) : url,
+                            cacheWidth: sized ? null : px,
+                          ),
                           key: ValueKey('$url|$sized'),
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
-                          // 原图可能很大，解码时按显示尺寸缩小。
-                          cacheWidth: sized ? null : px,
                           errorBuilder: (_, _, _) {
                             _onError(url, sized);
                             return const SizedBox.shrink();

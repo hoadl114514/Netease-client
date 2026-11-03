@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/image_viewer.dart';
+import '../../widgets/retry_image.dart';
 import '../comments/comments_page.dart';
 import '../library/playlist_page.dart';
 import '../login_page.dart';
@@ -282,8 +283,8 @@ class _Pictures extends StatelessWidget {
       onTap: () => ImageViewerPage.open(context, url),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        child: Image.network(
-          sizedImage(url, 600),
+        child: Image(
+          image: retryImage(sizedImage(url, 600)),
           fit: fit,
           errorBuilder: (_, _, _) => Container(
             color: AppColors.cardHover,
