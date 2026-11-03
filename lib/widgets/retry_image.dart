@@ -7,10 +7,12 @@ import 'package:flutter/painting.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/retry.dart';
+import 'image_disk_cache.dart';
 
 /// 和 [NetworkImage] 一样按地址取图，但网络抖动、服务端 5xx、图片没传完导致解码失败时
 /// 会自动重试（默认两次）。404 这类重试也没用的直接失败。
 ///
+/// 下载过的图存进 [ImageDiskCache]，下次直接从磁盘读。
 /// 失败的结果不进图片缓存，下次显示同一张图时会重新请求。
 @immutable
 class RetryNetworkImage extends ImageProvider<RetryNetworkImage> {
@@ -54,8 +56,22 @@ class RetryNetworkImage extends ImageProvider<RetryNetworkImage> {
     ImageDecoderCallback decode,
   ) async {
     try {
+      // 先看磁盘缓存；缓存的文件坏了就删掉，走网络重新下。
+      if (await ImageDiskCache.read(key.url) case final cached?) {
+        try {
+          return await decode(await ui.ImmutableBuffer.fromUint8List(cached));
+        } catch (_) {
+          await ImageDiskCache.remove(key.url);
+        }
+      }
       return await withRetry(
-        () async => decode(await ui.ImmutableBuffer.fromUint8List(await _fetch(key.url, chunks))),
+        () async {
+          final bytes = await _fetch(key.url, chunks);
+          final codec = await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+          // 能解码才存，免得存进坏图。
+          unawaited(ImageDiskCache.write(key.url, bytes));
+          return codec;
+        },
         delays: retryDelays,
         retryIf: isRetryableImageError,
       );

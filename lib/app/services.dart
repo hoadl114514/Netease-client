@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/painting.dart';
+
 import '../api/cookies.dart';
 import '../api/netease_api.dart';
 import '../audio/audio_engine.dart';
@@ -8,6 +12,7 @@ import '../lyrics/qq_lyrics.dart';
 import '../state/account_controller.dart';
 import '../state/player_controller.dart';
 import '../state/settings.dart';
+import '../widgets/image_disk_cache.dart';
 
 /// 应用级的单例集合，在 main 里建好后整个往下传。
 class AppServices {
@@ -21,6 +26,11 @@ class AppServices {
 
   /// 正式环境：真实网络 + just_audio。
   static Future<AppServices> create() async {
+    // 内存里多留些解码好的图（默认 100MB 只够二三十张大封面），切页面回来不用重新解码。
+    PaintingBinding.instance.imageCache
+      ..maximumSize = 2000
+      ..maximumSizeBytes = 256 << 20;
+    unawaited(ImageDiskCache.prune());
     final settings = await AppSettings.load();
     final api = NeteaseApi(cookies: parseCookie(settings.cookie));
     final lyrics = LyricService(netease: api, qq: QqLyrics());
