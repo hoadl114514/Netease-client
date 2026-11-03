@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/image_viewer.dart';
+import '../../widgets/retry_image.dart';
 import '../library/playlist_page.dart';
 import '../library/track_list_view.dart';
 import '../login_page.dart';
@@ -32,7 +33,11 @@ class _MessagesPageState extends State<MessagesPage> {
 
   Future<void> _chat(SocialUser user) async {
     await ChatPage.open(context, user);
-    // 看过之后未读数清零，最后一条也可能变了。
+    if (!mounted) return;
+    // 对话页的 dispose 要等退出动画结束，这里先记上。
+    ConversationReads.markRead(user.userId);
+    // 红点按本地的已读记录先去掉；最后一条可能变了，再重新拉一遍。
+    setState(() {});
     await _list.currentState?.refresh();
   }
 
@@ -76,10 +81,11 @@ class ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = conversation;
+    final unread = ConversationReads.unreadOf(c);
     return ListTile(
       leading: Badge(
-        isLabelVisible: c.unread > 0,
-        label: Text(c.unread > 99 ? '99+' : '${c.unread}'),
+        isLabelVisible: unread > 0,
+        label: Text(unread > 99 ? '99+' : '$unread'),
         child: SocialAvatar(userId: c.user.userId, url: c.user.avatarUrl, size: 48),
       ),
       title: Text(c.user.nickname, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -96,6 +102,31 @@ class ConversationTile extends StatelessWidget {
       onTap: onTap,
     );
   }
+}
+
+/// 本地的私信已读记录：用户 id → 最后一次退出和他对话的时间。
+///
+/// 服务端的未读数有时不会马上清零（或者根本没清），会话列表、抽屉里再拿到的还是旧数字；
+/// 在这之前的消息一律当作已读，不显示红点。只在本次运行内有效。
+abstract final class ConversationReads {
+  static final _readAt = <int, DateTime>{};
+
+  /// [latest] 是对话里看到的最新一条的时间（防本机时钟比服务器慢）。
+  static void markRead(int userId, {DateTime? latest}) {
+    final now = DateTime.now();
+    final at = latest != null && latest.isAfter(now) ? latest : now;
+    final old = _readAt[userId];
+    if (old == null || at.isAfter(old)) _readAt[userId] = at;
+  }
+
+  /// [c] 应该显示的未读数。
+  static int unreadOf(Conversation c) {
+    final readAt = _readAt[c.user.userId];
+    return readAt != null && !c.time.isAfter(readAt) ? 0 : c.unread;
+  }
+
+  @visibleForTesting
+  static void reset() => _readAt.clear();
 }
 
 /// 从我的关注里选一个人（写新私信用）。没登录先去登录。
@@ -169,6 +200,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    // 看过了：之前的消息都算已读。
+    ConversationReads.markRead(widget.user.userId, latest: _messages.lastOrNull?.time);
     _input.dispose();
     super.dispose();
   }
@@ -390,7 +423,11 @@ class _Bubble extends StatelessWidget {
               onTap: () => ImageViewerPage.open(context, url),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.card),
-                child: Image.network(sizedImage(url, 400), width: 160, fit: BoxFit.cover),
+                child: Image(
+                  image: retryImage(sizedImage(url, 400)),
+                  width: 160,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
           ),

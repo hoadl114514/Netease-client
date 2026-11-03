@@ -55,7 +55,22 @@ MockClient _client({List<http.Request>? sent}) => MockClient((r) async {
       'events': [_event(1, 2, '朋友的动态'), _event(2, 3, '音乐人的动态', userType: 4)],
     });
   }
-  if (path == '/api/msg/private/history') {
+  if (path == '/api/msg/private/users') {
+    // 模拟服务端没及时清未读：不管看没看过，一直报 3 条未读。
+    return _json({
+      'code': 200,
+      'more': false,
+      'msgs': [
+        {
+          'fromUser': {'userId': 2, 'nickname': '好友甲'},
+          'lastMsg': jsonEncode({'msg': '在吗'}),
+          'lastMsgTime': 1700000000000,
+          'newMsgCount': 3,
+        },
+      ],
+    });
+  }
+  if (path == '/weapi/msg/private/history') {
     return _json({
       'code': 200,
       'more': false,
@@ -101,6 +116,8 @@ Future<void> _pump(WidgetTester tester, MockClient client, Widget page) async {
 }
 
 void main() {
+  setUp(ConversationReads.reset);
+
   testWidgets('follow tab shows followed friends and their feed, filtered by kind', (tester) async {
     await _pump(tester, _client(), const FollowPage());
     expect(find.text('好友甲'), findsOneWidget);
@@ -134,6 +151,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(sent, hasLength(1));
     expect(find.text('在的'), findsOneWidget);
+  });
+
+  testWidgets('the unread badge goes away after reading the chat', (tester) async {
+    await _pump(tester, _client(), const MessagesPage());
+    expect(find.text('3'), findsOneWidget);
+
+    await tester.tap(find.text('好友甲'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatPage), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ChatPage), findsNothing);
+    expect(find.text('好友甲'), findsOneWidget);
+    expect(find.text('3'), findsNothing);
   });
 
   testWidgets('a risk-controlled follow explains itself in a dialog', (tester) async {

@@ -668,13 +668,23 @@ class NeteaseApi {
   }
 
   /// 和 [userId] 的私信记录。[before] 传当前最早一条的时间取更早的，第一页传 null。
+  ///
+  /// 走网页端的 WEAPI：网页端打开对话就是调这个，服务端会顺带把这个会话标成已读；
+  /// 明文 `/api/` 只读记录不清未读，退出对话后红点还在。WEAPI 失败时退回明文接口。
   Future<MessageHistory> messageHistory(int userId, {DateTime? before, int limit = 30}) async {
-    final data = await _api('https://music.163.com/api/msg/private/history', {
+    final form = {
       'userId': '$userId',
       'limit': '$limit',
       'time': '${before?.millisecondsSinceEpoch ?? 0}',
       'total': 'true',
-    });
+    };
+    Map<String, Object?> data;
+    try {
+      data = await _weapi('/api/msg/private/history', form);
+    } on ApiException catch (e) {
+      if (e.needsLogin) rethrow;
+      data = await _api('https://music.163.com/api/msg/private/history', form);
+    }
     final messages = [for (final m in _list(data['msgs'])) ?parsePrivateMessage(m)]
       ..sort((a, b) => a.time.compareTo(b.time));
     return MessageHistory(messages: messages, more: data['more'] == true);
