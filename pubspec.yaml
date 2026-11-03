@@ -1,7 +1,7 @@
 name: netease_client
 description: "A third-party NetEase Cloud Music client built with Flutter."
 publish_to: 'none'
-version: 0.0.7+7
+version: 0.0.8+8
 
 environment:
   sdk: ^3.13.7
