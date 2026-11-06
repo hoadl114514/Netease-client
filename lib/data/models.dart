@@ -705,3 +705,78 @@ enum FollowScene {
 
   final String label;
 }
+
+// ---------------------------------------------------------------- 用户状态
+
+/// 用户状态：个人主页名字下面那条「状态」，例如「学习中」「emo 中」。
+///
+/// 可选状态列表（`/api/social/user/status/support`）里的每一项也用这个类，
+/// 这时 [canEdit] 为 true 表示文字可以自己改。
+class UserStatus {
+  const UserStatus({
+    required this.type,
+    required this.content,
+    this.iconUrl,
+    this.actionUrl,
+    this.desc,
+    this.canEdit = false,
+    this.song,
+  });
+
+  /// 状态类型，设置状态时原样传回。
+  final String type;
+
+  /// 状态文字。
+  final String content;
+  final String? iconUrl;
+  final String? actionUrl;
+
+  /// 可选状态的说明文字。
+  final String? desc;
+
+  /// 文字是否可以自己改。
+  final bool canEdit;
+
+  /// 状态带的歌；没有为 null。
+  final Song? song;
+
+  UserStatus copyWith({String? content}) => UserStatus(
+    type: type,
+    content: content ?? this.content,
+    iconUrl: iconUrl,
+    actionUrl: actionUrl,
+    desc: desc,
+    canEdit: canEdit,
+    song: song,
+  );
+}
+
+/// 「相同状态的人」里的一个用户。
+class StatusUser {
+  const StatusUser({
+    required this.userId,
+    required this.nickname,
+    this.avatarUrl,
+    this.status,
+    this.tags = const [],
+  });
+
+  final int userId;
+  final String nickname;
+  final String? avatarUrl;
+  final UserStatus? status;
+
+  /// 推荐理由标签，例如共同喜欢的歌手。
+  final List<String> tags;
+}
+
+/// 和我状态相同的人（`/api/social/user/status/rcmd`）。没设置状态时 [users] 为空。
+class StatusRcmd {
+  const StatusRcmd({this.title, this.status, this.users = const []});
+
+  final String? title;
+
+  /// 我当前的状态。
+  final UserStatus? status;
+  final List<StatusUser> users;
+}
