@@ -90,13 +90,112 @@ void main() {
       expect(matches, isEmpty);
     });
 
-    test('a featured artist missing from the source lowers the score below the bar', () {
+    test('a featured artist listed on only one side still matches', () {
       expect(
         selectMatches(_source, [
           candidate(artists: ['周杰伦', '其他人']),
-        ]),
-        isEmpty,
+        ]).map((m) => m.song.id),
+        [1],
       );
+      const duet = Song(
+        id: '1',
+        title: '稻香',
+        artist: '周杰伦 / 其他人',
+        album: '',
+        duration: Duration(milliseconds: 223000),
+      );
+      expect(selectMatches(duet, [candidate()]).map((m) => m.song.id), [1]);
+    });
+
+    test('bracketed artist aliases match either name', () {
+      const s = Song(
+        id: '1',
+        title: 'Blueming',
+        artist: 'IU',
+        album: 'Love poem',
+        duration: Duration(milliseconds: 217000),
+      );
+      final c = candidate(
+        name: 'Blueming',
+        artists: ['IU (아이유)'],
+        album: 'Love poem',
+        durationMs: 217000,
+      );
+      expect(scoreMatch(s, c)!.score, greaterThan(99));
+      const korean = Song(
+        id: '1',
+        title: 'Blueming',
+        artist: '아이유',
+        album: '',
+        duration: Duration(milliseconds: 217000),
+      );
+      expect(selectMatches(korean, [c]), isNotEmpty);
+    });
+
+    test('feat. in the title and remaster tags are ignored', () {
+      const s = Song(
+        id: '1',
+        title: 'Stay (feat. Justin Bieber)',
+        artist: 'The Kid LAROI / Justin Bieber',
+        album: '',
+        duration: Duration(milliseconds: 141000),
+      );
+      expect(
+        selectMatches(s, [
+          candidate(name: 'Stay', artists: ['The Kid LAROI', 'Justin Bieber'], durationMs: 141000),
+        ]),
+        isNotEmpty,
+      );
+      const r = Song(
+        id: '1',
+        title: 'Hotel California',
+        artist: 'Eagles',
+        album: '',
+        duration: Duration(milliseconds: 391000),
+      );
+      expect(
+        scoreMatch(
+          r,
+          candidate(
+            name: 'Hotel California (2013 Remaster)',
+            artists: ['Eagles'],
+            durationMs: 391000,
+          ),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('the Netease alias can match a translated QQ title', () {
+      const s = Song(
+        id: '1',
+        title: '打上花火',
+        artist: 'DAOKO / 米津玄師',
+        album: '',
+        duration: Duration(milliseconds: 289000),
+        subtitle: 'Uchiage Hanabi',
+      );
+      expect(
+        scoreMatch(
+          s,
+          candidate(name: 'Uchiage Hanabi', artists: ['DAOKO', '米津玄師'], durationMs: 289000),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('single and album releases a few seconds apart pick the closer one', () {
+      final cs = [
+        candidate(id: 1, album: '单曲', durationMs: 227000),
+        candidate(id: 2, album: '另一张专辑', durationMs: 223000),
+      ];
+      expect(selectMatches(_source, cs).first.song.id, 2);
+    });
+
+    test('search title drops feat. and soundtrack notes', () {
+      expect(searchTitle('Stay (feat. Justin Bieber)'), 'Stay');
+      expect(searchTitle('稻香 (电影《某某》主题曲)'), '稻香');
+      expect(searchTitle('晴天 (Live)'), '晴天 (Live)');
     });
 
     test('equivalent releases are all returned, tried ids excluded', () {
