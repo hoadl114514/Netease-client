@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/playlist_card.dart';
 import '../library/track_list_view.dart';
 import '../search_page.dart';
+import '../../shell/player_bar.dart';
 
 /// 发现：热搜 + 官方排行榜。
 class DiscoverPage extends StatefulWidget {
@@ -73,7 +74,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               ],
               const _Title('排行榜'),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + floatingBarsInset(context)),
                 sliver: SliverPlaylistGrid(playlists: tops),
               ),
             ],

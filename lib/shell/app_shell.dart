@@ -81,19 +81,21 @@ class _AppShellState extends State<AppShell> {
           ],
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const PlayerBar(),
-          NavigationBar(
-            selectedIndex: _tab,
-            onDestinationSelected: (i) => _go(Destination.tabs[i]),
-            destinations: [
-              for (final d in Destination.tabs)
-                NavigationDestination(icon: Icon(d.icon), label: d.shortLabel),
-            ],
-          ),
-        ],
+      // 内容延伸到播放条和底栏下面，两者悬浮在内容上方。
+      extendBody: true,
+      bottomNavigationBar: FloatingBottomBar(
+        navigation: NavigationBar(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          elevation: 0,
+          selectedIndex: _tab,
+          onDestinationSelected: (i) => _go(Destination.tabs[i]),
+          destinations: [
+            for (final d in Destination.tabs)
+              NavigationDestination(icon: Icon(d.icon), label: d.shortLabel),
+          ],
+        ),
       ),
     );
   }

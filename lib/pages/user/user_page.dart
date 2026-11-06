@@ -20,6 +20,7 @@ import '../social/event_card.dart';
 import '../social/follow_list_page.dart';
 import '../social/messages_page.dart';
 import '../social/social_widgets.dart';
+import '../../shell/player_bar.dart';
 
 /// 用户主页。网易云的歌手和用户是两套 id：歌手入驻后绑定一个账号（`artist.accountId`），
 /// 账号资料里也记着绑定的歌手（`profile.artistId`）。这里两边合在一起显示：
@@ -217,7 +218,7 @@ class _HomeTabState extends State<_HomeTab> with AutomaticKeepAliveClientMixin {
       onRefresh: widget.onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 16),
+        padding: EdgeInsets.only(bottom: 16 + floatingBarsInset(context)),
         children: [
           _Header(data: d, self: self),
           if (d.artist?.description case final desc?)

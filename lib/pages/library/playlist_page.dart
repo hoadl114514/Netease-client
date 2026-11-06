@@ -14,7 +14,8 @@ class PlaylistPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('歌单')),
       body: PlaylistView(playlist: playlist),
-      bottomNavigationBar: const SafeArea(top: false, child: PlayerBar()),
+      extendBody: true,
+      bottomNavigationBar: const FloatingBottomBar(),
     );
   }
 }

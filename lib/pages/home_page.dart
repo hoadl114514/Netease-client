@@ -13,6 +13,7 @@ import '../widgets/playlist_card.dart';
 import 'login_page.dart';
 import 'music/daily_songs_page.dart';
 import 'now_playing/now_playing_page.dart';
+import '../shell/player_bar.dart';
 
 const _dailyPalette = [Color(0xFF3B2A4D), Color(0xFFB0605A), Color(0xFFE8B66B)];
 const _likedPalette = [Color(0xFFE85A9A), Color(0xFF6A4BC4), Color(0xFF1F1A3A)];
@@ -105,7 +106,7 @@ class HomePage extends StatelessWidget {
             sliver: const SliverToBoxAdapter(child: _SectionTitle('推荐歌单')),
           ),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32),
+            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 32 + floatingBarsInset(context)),
             // 登录状态变了（换号、退出）就重新拉推荐。
             sliver: _RecommendedPlaylists(key: ValueKey(account.profile?.userId)),
           ),
