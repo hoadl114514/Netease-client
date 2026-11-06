@@ -5,6 +5,7 @@ import '../data/models.dart';
 import '../pages/login_page.dart';
 import '../pages/music/nav.dart';
 import '../pages/social/messages_page.dart';
+import '../pages/user/user_status.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dev_badge.dart';
@@ -165,7 +166,7 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-/// 两个圆形快捷入口：听歌状态开关、添加好友。
+/// 两个圆形快捷入口：听歌状态（我的用户状态）、添加好友。
 class _StatusRow extends StatefulWidget {
   const _StatusRow();
 
@@ -174,17 +175,49 @@ class _StatusRow extends StatefulWidget {
 }
 
 class _StatusRowState extends State<_StatusRow> {
+  UserStatus? _status;
+  int? _userId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final id = AccountScope.of(context).profile?.userId;
+    if (id == _userId) return;
+    _userId = id;
+    _status = null;
+    if (id != null) _load(id);
+  }
+
+  Future<void> _load(int userId) async {
+    try {
+      final s = await AppScope.of(context).api.userStatus(userId);
+      if (mounted && _userId == userId) setState(() => _status = s);
+    } catch (_) {
+      // 取不到就显示「设置状态」。
+    }
+  }
+
+  Future<void> _edit() async {
+    if (_userId == null) {
+      await LoginPage.open(context);
+      return;
+    }
+    final next = await showStatusSheet(context, _status);
+    if (next != null && mounted) setState(() => _status = next);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final status = _status;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _RoundEntry(
-          onTap: () => showNotReady('听歌状态'),
+          onTap: _edit,
           circle: const UserAvatar(size: 60),
           label: '听歌状态',
-          caption: '待开发',
-          captionColor: AppColors.textMuted,
+          caption: status?.content ?? (_userId == null ? '登录后设置' : '设置状态'),
+          captionColor: status == null ? AppColors.textMuted : AppColors.textSecondary,
         ),
         const SizedBox(width: 16),
         // TODO(用户主页): 添加好友做好后，搜到的用户点进用户主页（openUser）。
@@ -233,7 +266,12 @@ class _RoundEntry extends StatelessWidget {
               const SizedBox(height: 8),
               Text(label, style: const TextStyle(fontSize: 15)),
               if (caption != null)
-                Text(caption!, style: TextStyle(fontSize: 15, color: captionColor)),
+                Text(
+                  caption!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, color: captionColor),
+                ),
             ],
           ),
         ),

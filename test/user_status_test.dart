@@ -9,6 +9,7 @@ import 'package:netease_client/api/eapi_crypto.dart';
 import 'package:netease_client/api/netease_api.dart';
 import 'package:netease_client/app/app.dart';
 import 'package:netease_client/pages/user/user_page.dart';
+import 'package:netease_client/shell/app_drawer.dart';
 import 'package:netease_client/state/account_controller.dart';
 import 'package:netease_client/state/player_controller.dart';
 
@@ -65,7 +66,11 @@ MockClient _client({
   return _json({'code': 200});
 });
 
-Future<void> _pump(WidgetTester tester, MockClient client) async {
+Future<void> _pump(
+  WidgetTester tester,
+  MockClient client, {
+  Widget home = const UserPage(userId: 100),
+}) async {
   tester.view.physicalSize = const Size(400, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -78,10 +83,7 @@ Future<void> _pump(WidgetTester tester, MockClient client) async {
         controller: f.services.account,
         child: PlayerScope(
           controller: f.services.player,
-          child: MaterialApp(
-            scaffoldMessengerKey: AppScope.messengerKey,
-            home: const UserPage(userId: 100),
-          ),
+          child: MaterialApp(scaffoldMessengerKey: AppScope.messengerKey, home: home),
         ),
       ),
     ),
@@ -233,5 +235,24 @@ void main() {
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(find.text('写代码'), findsOneWidget);
+  });
+
+  testWidgets('the drawer status entry shows my status and opens the picker', (tester) async {
+    await _pump(
+      tester,
+      _client(
+        status: {
+          'content': {'type': 'STUDY', 'content': '学习中'},
+        },
+      ),
+      home: Scaffold(body: AppDrawer(onSelect: (_) {})),
+    );
+    expect(find.text('听歌状态'), findsOneWidget);
+    expect(find.text('学习中'), findsOneWidget);
+    expect(find.text('待开发'), findsNothing);
+
+    await tester.tap(find.text('听歌状态'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前状态：学习中'), findsOneWidget);
   });
 }
