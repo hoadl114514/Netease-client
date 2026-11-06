@@ -561,6 +561,85 @@ class NeteaseApi {
     );
   }
 
+  // ---------------------------------------------------------------- 用户状态
+  //
+  // 接口参考 api-enhanced 的 user_social_status*（默认走 EAPI），都需要登录。
+
+  /// [userId] 当前的状态；没设置时返回 null。
+  Future<UserStatus?> userStatus(int userId) async {
+    final data = await _eapi('/api/social/user/status', {'visitorId': '$userId'});
+    return parseUserStatus(data['data']);
+  }
+
+  /// 可以设置的状态列表。
+  Future<List<UserStatus>> statusOptions() async {
+    final data = await _eapi('/api/social/user/status/support', const {});
+    final raw = data['data'];
+    final list = raw is Map ? raw['list'] : raw;
+    return [for (final s in _list(list)) ?parseUserStatus(s)];
+  }
+
+  /// 设置自己的状态。返回服务端的提示（例如「将展示7天」），没有为 null。
+  Future<String?> setStatus(UserStatus status) async {
+    final data = await _eapi('/api/social/user/status/edit', {
+      'content': jsonEncode({
+        'type': status.type,
+        'iconUrl': status.iconUrl,
+        'content': status.content,
+        'actionUrl': status.actionUrl,
+      }),
+    });
+    return _str(data['data']);
+  }
+
+  /// 和我状态相同的人。
+  Future<StatusRcmd> sameStatusUsers() async {
+    final data = await _eapi('/api/social/user/status/rcmd', const {});
+    final d = data['data'];
+    if (d is! Map) return const StatusRcmd();
+    return StatusRcmd(
+      title: _str(d['rcmdTitle']),
+      status: parseUserStatus(d['statusContentDTO']),
+      users: [
+        for (final u in _list(d['userRcmdInfoVOList']))
+          if (u is Map && u['userId'] != null)
+            StatusUser(
+              userId: _int(u['userId']),
+              nickname: '${u['nickName'] ?? u['nickname'] ?? ''}'.trim(),
+              avatarUrl: _https(_str(u['avatarUrl'])),
+              status: parseUserStatus(u['statusContentDTO']),
+              tags: [
+                for (final t in _list(u['tagRcmdVOList']))
+                  if (t is Map) ?_str(t['name']),
+              ],
+            ),
+      ],
+    );
+  }
+
+  /// 状态有几种包法：直接是 `{type, iconUrl, content}`；或者外面再包一层，
+  /// 状态在 `content`（对象或 JSON 字符串）/ `statusContentDTO` 里，歌在 `song`。
+  /// 空对象（没设置状态）返回 null。
+  static UserStatus? parseUserStatus(Object? raw) {
+    if (raw is! Map) return null;
+    final dto = raw['statusContentDTO'];
+    final inner = dto is Map ? dto : _messageJson(raw['content']);
+    final c = inner.isNotEmpty ? inner : raw;
+    final content = '${c['content'] ?? ''}'.trim();
+    final type = '${c['type'] ?? ''}'.trim();
+    if (content.isEmpty && type.isEmpty) return null;
+    final song = raw['song'] ?? c['song'];
+    return UserStatus(
+      type: type,
+      content: content,
+      iconUrl: _https(_str(c['iconUrl'])),
+      actionUrl: _str(c['actionUrl']),
+      desc: _str(c['desc']),
+      canEdit: c['canEdit'] == true,
+      song: song is Map ? parseSong(song) : null,
+    );
+  }
+
   // ---------------------------------------------------------------- 关注 / 粉丝
 
   /// 关注 / 取消关注（需要登录），和参考实现一样走网页端 WEAPI。

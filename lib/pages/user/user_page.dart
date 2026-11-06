@@ -11,6 +11,7 @@ import '../../widgets/cover_art.dart';
 import '../../widgets/image_viewer.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/song_tile.dart';
+import 'user_status.dart';
 import '../library/playlist_page.dart';
 import '../library/track_list_view.dart';
 import '../music/artist_page.dart';
@@ -56,6 +57,7 @@ class UserPageData {
     this.created = const [],
     this.subscribed = const [],
     this.liked,
+    this.status,
   });
 
   final UserDetail? user;
@@ -66,6 +68,9 @@ class UserPageData {
 
   /// 「TA 喜欢的音乐」歌单。
   final Playlist? liked;
+
+  /// 账号当前的状态（需要登录才能取）；没设置或取不到为 null。
+  final UserStatus? status;
 
   String get name => artist?.name ?? user?.nickname ?? '';
   String? get avatarUrl => artist?.avatarUrl ?? user?.avatarUrl;
@@ -111,14 +116,20 @@ Future<UserPageData> loadUserPage(AppServices services, {int? userId, ArtistRef?
   }
 
   var playlists = const <Playlist>[];
+  UserStatus? status;
   if (uid != null) {
+    final statusFuture = user != null && api.hasLoginCookie
+        ? api.userStatus(uid).catchError((Object _) => null)
+        : Future<UserStatus?>.value();
     playlists = await api.userPlaylists(uid).catchError((Object _) => const <Playlist>[]);
+    status = await statusFuture;
   }
   final id = uid;
   return UserPageData(
     user: user,
     artist: artistInfo,
     hotSongs: hotSongs,
+    status: status,
     liked: playlists.where((p) => p.isLikedList).firstOrNull,
     created: [
       for (final p in playlists)
@@ -401,6 +412,10 @@ class _Header extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                   ),
+                ],
+                if (u != null && (self || d.status != null)) ...[
+                  const SizedBox(height: 8),
+                  UserStatusChip(status: d.status, editable: self),
                 ],
                 if (u != null && !self) ...[
                   const SizedBox(height: 10),
