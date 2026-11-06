@@ -27,7 +27,7 @@ class ApiException implements Exception {
 
 /// 网易云接口。
 ///
-/// 大部分接口走明文 `/api/`（表单 POST + Cookie），播放地址、歌词和收藏走 EAPI 加密。
+/// 大部分接口走明文 `/api/`（表单 POST + Cookie），播放地址走 XEAPI，歌词和收藏走 EAPI 加密。
 /// 只依赖 Cookie 里的 `MUSIC_U` 识别账号；没有 Cookie 时仍可搜索、播放免费歌曲。
 class NeteaseApi {
   NeteaseApi({http.Client? client, Map<String, String> cookies = const {}, Random? random})
@@ -202,27 +202,14 @@ class NeteaseApi {
 
   /// 取播放地址。没有版权、需要购买或会员时返回 null。
   ///
-  /// 网易云现在只给安卓端 XEAPI 加密的请求下发无损以上的地址，先走 XEAPI；
-  /// XEAPI 本身出错（拿不到公钥、解密失败等）时退回原来的 EAPI，至少能放较低音质。
+  /// 网易云现在只给安卓端 XEAPI 加密的请求下发无损以上的地址，统一走 XEAPI。
   Future<SongUrl?> songUrl(String songId, AudioQuality quality) async {
-    const path = '/api/song/enhance/player/url/v1';
-    Map<String, Object?> data;
-    try {
-      data = await _xeapi(path, {
-        'ids': '[$songId]',
-        'level': quality.level,
-        'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
-        if (quality == AudioQuality.sky) 'immerseType': 'c51',
-      });
-    } on ApiException catch (e) {
-      if (e.code == 301) rethrow; // 登录失效，换接口也没用。
-      data = await _eapi(path, {
-        'ids': [int.parse(songId)],
-        'level': quality.level,
-        'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
-        if (quality == AudioQuality.sky) 'immerseType': 'c51',
-      });
-    }
+    final data = await _xeapi('/api/song/enhance/player/url/v1', {
+      'ids': '[$songId]',
+      'level': quality.level,
+      'encodeType': quality == AudioQuality.dolby ? 'mp4' : 'flac',
+      if (quality == AudioQuality.sky) 'immerseType': 'c51',
+    });
     final entries = _list(data['data']);
     if (entries.isEmpty) return null;
     final entry = entries.first as Map;
