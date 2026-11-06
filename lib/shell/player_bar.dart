@@ -36,6 +36,8 @@ class PlayerBar extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
+          // 撑满卡片高度，歌曲信息和按钮在卡片里垂直居中。
+          fit: StackFit.expand,
           children: [
             Padding(
               padding: const EdgeInsets.only(left: 8, right: 4),
