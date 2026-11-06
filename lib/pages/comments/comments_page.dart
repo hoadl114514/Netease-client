@@ -4,7 +4,6 @@ import '../../api/netease_api.dart';
 import '../../app/app.dart';
 import '../../data/format.dart';
 import '../../data/models.dart';
-import '../../shell/player_bar.dart';
 import '../../state/account_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/copy_sheet.dart';
@@ -124,7 +123,6 @@ class _CommentsPageState extends State<CommentsPage> with SingleTickerProviderSt
           ),
         ],
       ),
-      bottomNavigationBar: const SafeArea(top: false, child: PlayerBar()),
     );
   }
 }
@@ -889,45 +887,49 @@ class _ComposerState extends State<_Composer> {
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _input,
-              focusNode: _focus,
-              minLines: 1,
-              maxLines: 4,
-              maxLength: 140,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              decoration: InputDecoration(
-                hintText: target == null ? '说点什么吧' : '回复 @${target.user.nickname}',
-                border: InputBorder.none,
-                counterText: '',
-                isDense: true,
+      // 评论页不显示播放条，输入框直接贴底，要自己避开系统手势条。
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _input,
+                focusNode: _focus,
+                minLines: 1,
+                maxLines: 4,
+                maxLength: 140,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                decoration: InputDecoration(
+                  hintText: target == null ? '说点什么吧' : '回复 @${target.user.nickname}',
+                  border: InputBorder.none,
+                  counterText: '',
+                  isDense: true,
+                ),
               ),
             ),
-          ),
-          if (_replyTo != null)
-            IconButton(
-              tooltip: '取消回复',
-              icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textMuted),
-              onPressed: () => setState(() => _replyTo = null),
+            if (_replyTo != null)
+              IconButton(
+                tooltip: '取消回复',
+                icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textMuted),
+                onPressed: () => setState(() => _replyTo = null),
+              ),
+            ListenableBuilder(
+              listenable: _input,
+              builder: (context, _) => IconButton(
+                tooltip: '发送',
+                onPressed: _input.text.trim().isEmpty || _sending ? null : _send,
+                icon: _sending
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_rounded, color: AppColors.accent),
+              ),
             ),
-          ListenableBuilder(
-            listenable: _input,
-            builder: (context, _) => IconButton(
-              tooltip: '发送',
-              onPressed: _input.text.trim().isEmpty || _sending ? null : _send,
-              icon: _sending
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_rounded, color: AppColors.accent),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
