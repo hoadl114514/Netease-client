@@ -56,13 +56,28 @@ class QqLyrics {
 
   /// 找到可信匹配并且有可用歌词时返回，否则返回 [Lyrics.empty]。优先逐字歌词。
   Future<Lyrics> fetch(Song song) async {
-    final primaryArtist = song.artist.split(_artistSeparator).first.trim();
-    final queries = {'${song.title} $primaryArtist'.trim(), song.title}.toList();
+    final primaryArtist = _stripBrackets(song.artist.split(_artistSeparator).first).trim();
+    // 去掉 feat.、影视注释等括注再搜一次：这些字常让 QQ 搜不到原曲。
+    final plainTitle = searchTitle(song.title);
+    final queries = {
+      '${song.title} $primaryArtist'.trim(),
+      if (plainTitle.isNotEmpty) '$plainTitle $primaryArtist'.trim(),
+      song.title,
+    }.toList();
     final candidates = <int, QqSong>{};
     final tried = <int>{};
     Lyrics fallback = Lyrics.empty;
+    Object? searchError;
     for (final q in queries) {
-      for (final c in await search(q)) {
+      final List<QqSong> found;
+      try {
+        found = await search(q);
+      } catch (e) {
+        // 一个关键词搜索失败，继续试下一个。
+        searchError = e;
+        continue;
+      }
+      for (final c in found) {
         candidates[c.id] = c;
       }
       for (final m in selectMatches(song, candidates.values.toList(), exclude: tried)) {
@@ -86,6 +101,8 @@ class QqLyrics {
         if (fallback.isEmpty) fallback = lyrics;
       }
     }
+    // 一个候选都没搜到又出过错：报错，而不是说 QQ 没有这首歌。
+    if (fallback.isEmpty && candidates.isEmpty && searchError != null) throw searchError;
     return fallback;
   }
 
@@ -240,11 +257,30 @@ const _versions = {
   'clean': r'\bclean\b|消音版',
   'explicit': r'\bexplicit\b',
 };
+
+/// 不影响歌词内容和时间轴的标记，比较版本时忽略。
+const _cosmeticVersions = {'remaster', 'clean', 'explicit'};
 final _versionRes = {
   for (final e in _versions.entries) e.key: RegExp(e.value, caseSensitive: false),
 };
 final _brackets = RegExp(r'\([^()]*\)|\[[^\[\]]*\]|【[^【】]*】|（[^（）]*）');
-final _description = RegExp(r'主题曲|片尾曲|片头曲|插曲|推广曲|原声带|soundtrack', caseSensitive: false);
+final _description = RegExp(
+  r'主题曲|片尾曲|片头曲|插曲|推广曲|原声带|soundtrack|^\W*(?:feat\.?|ft\.?|featuring|with)\s',
+  caseSensitive: false,
+);
+
+String _stripBrackets(String v) =>
+    v.replaceAll(_brackets, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// 搜索用的标题：去掉影视注释、feat. 这类括注，保留版本标记。
+String searchTitle(String title) => title
+    .replaceAllMapped(_brackets, (m) {
+      final inner = m.group(0)!.substring(1, m.group(0)!.length - 1);
+      return _description.hasMatch(inner) ? ' ' : m.group(0)!;
+    })
+    .replaceAll(RegExp(r'\s+(?:feat\.?|ft\.?|featuring)\s.*$', caseSensitive: false), '')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
 
 /// 全角转半角、转小写、只留字母数字（含汉字、假名等）。没有做繁简转换。
 String normalizeTitle(String v) {
@@ -268,27 +304,45 @@ String normalizeTitle(String v) {
   final context = [...brackets, subtitle, suffix?.group(0) ?? ''].join(' ');
   final versions = {
     for (final e in _versionRes.entries)
-      if (e.value.hasMatch(context)) e.key,
+      if (!_cosmeticVersions.contains(e.key) && e.value.hasMatch(context)) e.key,
   };
   var base = suffix == null ? name : name.substring(0, suffix.start);
   base = base.replaceAllMapped(_brackets, (m) {
     final t = m.group(0)!;
-    return _description.hasMatch(t) || _versionRes.values.any((r) => r.hasMatch(t)) ? '' : t;
+    final inner = t.substring(1, t.length - 1);
+    return _description.hasMatch(inner) || _versionRes.values.any((r) => r.hasMatch(t)) ? '' : t;
   });
+  // 标题末尾不带括号的 feat.：Song feat. Someone。
+  base = base.replaceFirst(
+    RegExp(r'\s+(?:feat\.?|ft\.?|featuring)\s.*$', caseSensitive: false),
+    '',
+  );
   base = base.replaceFirst(RegExp(r'(?:现场|伴奏|翻唱|加速|慢速|国语|粤语|英文|日语|韩语)版$'), '');
   return (base: normalizeTitle(base), versions: versions);
 }
 
-List<String> artistKeys(List<String> names) {
-  final out = <String>[];
+/// 每位歌手的几种写法：完整名、去掉括注的名字、括注里的名字。
+/// QQ 常写成 `IU (아이유)`、`防弹少年团 (BTS)`，网易云多半只写其中一个。
+List<Set<String>> artistAliases(List<String> names) {
+  final out = <Set<String>>[];
   for (final n in names) {
     for (final part in n.split(_artistSeparator)) {
-      final k = normalizeTitle(part);
-      if (k.isNotEmpty && !out.contains(k)) out.add(k);
+      final full = normalizeTitle(part);
+      if (full.isEmpty) continue;
+      final keys = {
+        full,
+        normalizeTitle(part.replaceAll(_brackets, '')),
+        for (final m in _brackets.allMatches(part))
+          normalizeTitle(m.group(0)!.substring(1, m.group(0)!.length - 1)),
+      }..remove('');
+      if (out.any((o) => o.first == full)) continue;
+      out.add(keys); // 第一个元素是完整名。
     }
   }
   return out;
 }
+
+bool _sameArtist(Set<String> a, Set<String> b) => a.any(b.contains);
 
 /// 2 × 最长公共子序列 / 总长，和 difflib 的 ratio 同量纲。
 double similarity(String a, String b) {
@@ -307,24 +361,38 @@ double similarity(String a, String b) {
 
 bool _setEq(Set<String> a, Set<String> b) => a.length == b.length && a.containsAll(b);
 
-/// 给候选打分；明显不是同一录音时返回 null。满分 100。
-QqMatch? scoreMatch(Song source, QqSong c) {
-  final t1 = titleKey(source.title);
+double? _titleScore(String source, QqSong c) {
+  final t1 = titleKey(source);
   final t2 = titleKey(c.name, c.subtitle);
   if (t1.base.isEmpty || t2.base.isEmpty || !_setEq(t1.versions, t2.versions)) return null;
-  final titleScore = similarity(t1.base, t2.base);
+  final score = similarity(t1.base, t2.base);
   // 短标题必须完全一致：差一个字就可能是另一首歌。
-  if (titleScore < 0.88 || (min(t1.base.length, t2.base.length) <= 4 && t1.base != t2.base)) {
+  if (score < 0.88 || (min(t1.base.length, t2.base.length) <= 4 && t1.base != t2.base)) {
     return null;
   }
-  final a1 = artistKeys([source.artist]), a2 = artistKeys(c.artists);
+  return score;
+}
+
+/// 给候选打分；明显不是同一录音时返回 null。满分 100。
+QqMatch? scoreMatch(Song source, QqSong c) {
+  // 网易云的别名 / 译名也算标题：有些歌两边用的是不同语言的歌名。
+  final titleScore = [
+    for (final t in [source.title, ?source.subtitle])
+      if (t.isNotEmpty) ?_titleScore(t, c),
+  ].fold<double?>(null, (a, b) => a == null || b > a ? b : a);
+  if (titleScore == null) return null;
+  final a1 = artistAliases([source.artist]), a2 = artistAliases(c.artists);
   if (a1.isEmpty || a2.isEmpty) return null;
-  // 只靠合作歌手对上不够，主唱必须互相包含。
-  if (!a2.contains(a1.first) || !a1.contains(a2.first)) return null;
-  final common = a1.toSet().intersection(a2.toSet()).length;
-  final artistScore = common / a1.toSet().union(a2.toSet()).length;
+  // 只靠合作歌手对上不够：QQ 的主唱必须在网易云的歌手里。
+  // 反过来不要求，因为 QQ 常把网易云的主唱写成 feat.，或者漏掉合作歌手。
+  bool inA2(Set<String> a) => a2.any((b) => _sameArtist(a, b));
+  if (!a1.any((a) => _sameArtist(a, a2.first))) return null;
+  final common = a1.where(inA2).length;
+  final overlap = common / (a1.length + a2.length - common);
+  // 主唱对上就是大头，合作歌手列得多或少只扣一点：两边平台常常漏写 feat.。
+  final artistScore = 0.7 + 0.3 * overlap;
   final srcMs = source.duration.inMilliseconds;
-  if (artistScore < 0.5 || srcMs <= 0 || c.durationMs <= 0) return null;
+  if (srcMs <= 0 || c.durationMs <= 0) return null;
   final diff = (srcMs - c.durationMs).abs();
   if (diff > 10000) return null;
   final durationScore = diff <= 2000
@@ -337,12 +405,17 @@ QqMatch? scoreMatch(Song source, QqSong c) {
   return QqMatch(c, 45 * titleScore + 35 * artistScore + 15 * durationScore + 5 * albumScore, diff);
 }
 
+/// 同名、同版本、同主唱的就是同一首歌，只是发在不同专辑里（单曲、专辑、精选集）。
+/// 时长差几秒不算另一首：这种情况按时长更近的优先，而不是因为“有歧义”整个放弃。
 bool _sameRecording(QqSong a, QqSong b) {
   final ta = titleKey(a.name, a.subtitle), tb = titleKey(b.name, b.subtitle);
+  final aa = artistAliases(a.artists), ab = artistAliases(b.artists);
   return ta.base == tb.base &&
       _setEq(ta.versions, tb.versions) &&
-      _setEq(artistKeys(a.artists).toSet(), artistKeys(b.artists).toSet()) &&
-      (a.durationMs - b.durationMs).abs() <= 2000;
+      aa.isNotEmpty &&
+      ab.isNotEmpty &&
+      _sameArtist(aa.first, ab.first) &&
+      (a.durationMs - b.durationMs).abs() <= 10000;
 }
 
 /// 选出可信的候选（最多 3 个，都是同一录音）。最高分低于 85、或和另一录音分差小于 8 时放弃。
