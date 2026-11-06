@@ -127,7 +127,8 @@ class _SearchPageState extends State<SearchPage> {
       body: _showResults
           ? _Results(key: ValueKey(_keyword), keyword: _keyword)
           : _Suggestions(input: _input, onSearch: _search),
-      bottomNavigationBar: const SafeArea(top: false, child: PlayerBar()),
+      extendBody: true,
+      bottomNavigationBar: const FloatingBottomBar(),
     );
   }
 }
@@ -397,7 +398,7 @@ class _SuggestionsState extends State<_Suggestions> {
       builder: (context, _) {
         final history = settings.searchHistory;
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + floatingBarsInset(context)),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             if (history.isNotEmpty) ...[

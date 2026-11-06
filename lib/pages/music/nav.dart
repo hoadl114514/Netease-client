@@ -23,7 +23,8 @@ class SubPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(title), actions: actions),
       body: body,
-      bottomNavigationBar: const SafeArea(top: false, child: PlayerBar()),
+      extendBody: true,
+      bottomNavigationBar: const FloatingBottomBar(),
     );
   }
 }

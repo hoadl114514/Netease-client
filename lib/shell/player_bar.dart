@@ -84,9 +84,7 @@ class PlayerBar extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 12.5,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.7,
-                                      ),
+                                      color: Colors.white.withValues(alpha: 0.7),
                                     ),
                                   ),
                                 ],
@@ -107,9 +105,7 @@ class PlayerBar extends StatelessWidget {
                   ),
                   LikeButton(songId: song.id, color: Colors.white),
                   RoundIconButton(
-                    icon: player.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
+                    icon: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     onPressed: player.toggle,
                     tooltip: player.isPlaying ? '暂停' : '播放',
                     size: 44,
@@ -131,6 +127,53 @@ class PlayerBar extends StatelessWidget {
     );
   }
 }
+
+/// 悬浮在页面内容上方的底部区域：迷你播放条，以及可选的底部导航。
+///
+/// 背景是从透明到页面底色的渐变，内容可以滚到它下面。
+/// 搭配 `Scaffold(extendBody: true)` 使用，滚动内容底部用 [floatingBarsInset] 留白。
+class FloatingBottomBar extends StatelessWidget {
+  const FloatingBottomBar({super.key, this.navigation});
+
+  /// 播放条下方的导航栏。为空时只有播放条，并自己处理底部安全区。
+  final Widget? navigation;
+
+  @override
+  Widget build(BuildContext context) {
+    final nav = navigation;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.background.withValues(alpha: 0),
+            AppColors.background.withValues(alpha: nav == null ? 0.6 : 0.85),
+            AppColors.background.withValues(alpha: 0.95),
+          ],
+          stops: const [0, 0.45, 1],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (nav == null)
+            const SafeArea(top: false, child: PlayerBar())
+          else ...[
+            const PlayerBar(),
+            nav,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 页面延伸到 [FloatingBottomBar] 下方时，滚动内容底部要留出的高度。
+///
+/// `Scaffold(extendBody: true)` 会把底栏高度算进 body 的 MediaQuery 底部 padding。
+/// 不传 padding 的 ListView 会自动留出这段距离，其他滚动视图要手动加上。
+double floatingBarsInset(BuildContext context) => MediaQuery.paddingOf(context).bottom;
 
 /// 卡片底边的细进度线，只显示不响应手势（拖动进度到播放页里操作）。
 class _ProgressLine extends StatelessWidget {
@@ -164,11 +207,7 @@ class _ProgressLine extends StatelessWidget {
 ///
 /// 左滑（手指向左）切上一首，右滑（手指向右）切下一首。
 class _SwipeToSkip extends StatefulWidget {
-  const _SwipeToSkip({
-    required this.onPrevious,
-    required this.onNext,
-    required this.child,
-  });
+  const _SwipeToSkip({required this.onPrevious, required this.onNext, required this.child});
 
   final VoidCallback onPrevious;
   final VoidCallback onNext;
@@ -178,8 +217,7 @@ class _SwipeToSkip extends StatefulWidget {
   State<_SwipeToSkip> createState() => _SwipeToSkipState();
 }
 
-class _SwipeToSkipState extends State<_SwipeToSkip>
-    with SingleTickerProviderStateMixin {
+class _SwipeToSkipState extends State<_SwipeToSkip> with SingleTickerProviderStateMixin {
   /// 触发切歌的最小滑动距离（逻辑像素）。
   static const _distance = 56.0;
 
@@ -204,11 +242,7 @@ class _SwipeToSkipState extends State<_SwipeToSkip>
       HapticFeedback.selectionClick();
       widget.onNext();
     }
-    _offset.animateTo(
-      0,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-    );
+    _offset.animateTo(0, duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic);
   }
 
   @override

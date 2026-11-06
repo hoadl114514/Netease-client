@@ -4,6 +4,7 @@ import '../../api/netease_api.dart';
 import '../../theme/app_theme.dart';
 import '../library/track_list_view.dart';
 import '../login_page.dart';
+import '../../shell/player_bar.dart';
 
 /// 一页数据和下一页的游标（offset、lasttime 之类，由调用方决定）。
 typedef PageResult<T> = ({List<T> items, bool more, Object? next});
@@ -153,7 +154,7 @@ class PagedListViewState<T> extends State<PagedListView<T>> {
         onRefresh: refresh,
         child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 16),
+          padding: EdgeInsets.only(bottom: 16 + floatingBarsInset(context)),
           itemCount: count,
           itemBuilder: (context, i) {
             if (i < head) return widget.header[i];

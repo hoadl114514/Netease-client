@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/cover_art.dart';
 import '../../widgets/image_viewer.dart';
 import '../../widgets/song_tile.dart';
+import '../../shell/player_bar.dart';
 
 /// 歌曲列表页的通用骨架：头部 + 下拉刷新 + 加载 / 失败 / 空状态 + 歌曲列表。
 /// 歌单、专辑、每日推荐、最近播放共用。
@@ -214,7 +215,7 @@ class _TrackListViewState extends State<TrackListView> {
                     );
                   },
                 ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              SliverToBoxAdapter(child: SizedBox(height: 16 + floatingBarsInset(context))),
             ],
           ),
         );
