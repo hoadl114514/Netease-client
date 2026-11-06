@@ -29,6 +29,36 @@ Uint8List _aes(List<int> key, List<int> data) =>
           ..init(true, PaddedBlockCipherParameters(KeyParameter(Uint8List.fromList(key)), null)))
         .process(Uint8List.fromList(data));
 
+/// 模拟 XEAPI 服务端：先应答公钥注册，其余请求交给 [handler]，返回值按 XEAPI 加密。
+MockClient _xeapiClient(
+  Map<String, Object?> Function(http.Request r) handler, {
+  List<http.Request>? requests,
+}) {
+  final server = Uint8List.fromList(List.generate(32, (i) => i * 7 + 3));
+  return MockClient((r) async {
+    requests?.add(r);
+    if (r.url.path == '/api/bsr/sk/get') {
+      final f = r.bodyFields;
+      expect(f['signature'], XeapiCrypto.sign(f['timestamp']!, f['nonce']!));
+      final key = jsonEncode({
+        'publicKey': base64.encode(X25519.publicKey(server)),
+        'version': '3',
+        'sk': 'sk1',
+      });
+      return json({
+        'code': 200,
+        'data': {
+          'encryptedData': base64.encode(_aes(_xeapiStaticKey, utf8.encode(key))),
+          'timestamp': 42,
+          'signature': XeapiCrypto.sign('42', f['nonce']!),
+        },
+      });
+    }
+    final body = jsonEncode(handler(r));
+    return http.Response.bytes(_aes(utf8.encode('e82ckenh8dichen8'), utf8.encode(body)), 200);
+  });
+}
+
 void main() {
   test('parseCookie handles separators, blanks and "=" in values', () {
     expect(parseCookie(' MUSIC_U=ab=c ; __csrf=x\nbad; empty= ;=v'), {
@@ -114,43 +144,23 @@ void main() {
   });
 
   test('songUrl goes through XEAPI with a registered public key', () async {
-    final server = Uint8List.fromList(List.generate(32, (i) => i * 7 + 3));
     final requests = <http.Request>[];
     final api = NeteaseApi(
       cookies: {'MUSIC_U': 'u'},
-      client: MockClient((r) async {
-        requests.add(r);
-        if (r.url.path == '/api/bsr/sk/get') {
-          final f = r.bodyFields;
-          expect(f['signature'], XeapiCrypto.sign(f['timestamp']!, f['nonce']!));
-          final key = jsonEncode({
-            'publicKey': base64.encode(X25519.publicKey(server)),
-            'version': '3',
-            'sk': 'sk1',
-          });
-          return json({
-            'code': 200,
-            'data': {
-              'encryptedData': base64.encode(_aes(_xeapiStaticKey, utf8.encode(key))),
-              'timestamp': 42,
-              'signature': XeapiCrypto.sign('42', f['nonce']!),
-            },
-          });
-        }
+      client: _xeapiClient((r) {
         expect(
           r.url.toString(),
           'https://interface3.music.163.com/xeapi/song/enhance/player/url/v1',
         );
         expect(r.headers['x-music-u'], 'u');
         expect(r.bodyFields.keys, ['C', 'S', 'R']);
-        final body = jsonEncode({
+        return {
           'code': 200,
           'data': [
             {'url': 'http://m801.music.126.net/x.flac', 'level': 'hires'},
           ],
-        });
-        return http.Response.bytes(_aes(utf8.encode('e82ckenh8dichen8'), utf8.encode(body)), 200);
-      }),
+        };
+      }, requests: requests),
     );
     final u = await api.songUrl('1', AudioQuality.hires);
     expect(u!.quality, AudioQuality.hires);
@@ -160,17 +170,12 @@ void main() {
     expect(requests.where((r) => r.url.path == '/api/bsr/sk/get'), hasLength(1));
   });
 
-  test('songUrl falls back to EAPI and reads level / trial; null url means unavailable', () async {
-    final bodies = <Map<String, String>>[];
+  test('songUrl reads level / trial; null url means unavailable', () async {
     var call = 0;
     final api = NeteaseApi(
-      client: MockClient((r) async {
-        // XEAPI 拿不到公钥时退回 EAPI。
-        if (r.url.path == '/api/bsr/sk/get') return json({'code': 500});
-        bodies.add(r.bodyFields);
-        expect(r.url.path, '/eapi/song/enhance/player/url/v1');
-        return call++ == 0
-            ? json({
+      client: _xeapiClient(
+        (r) => call++ == 0
+            ? {
                 'code': 200,
                 'data': [
                   {
@@ -179,20 +184,31 @@ void main() {
                     'freeTrialInfo': {'start': 30000, 'end': 60000},
                   },
                 ],
-              })
-            : json({
+              }
+            : {
                 'code': 200,
                 'data': [
                   {'url': null, 'code': 404},
                 ],
-              });
-      }),
+              },
+      ),
     );
     final u = await api.songUrl('1', AudioQuality.lossless);
     expect(u!.quality, AudioQuality.exhigh);
     expect(u.trial, (start: const Duration(seconds: 30), end: const Duration(seconds: 60)));
-    expect(bodies.first['params'], matches(RegExp(r'^[0-9A-F]+$')));
     expect(await api.songUrl('1', AudioQuality.standard), isNull);
+  });
+
+  test('songUrl does not fall back to EAPI when XEAPI fails', () async {
+    final paths = <String>[];
+    final api = NeteaseApi(
+      client: MockClient((r) async {
+        paths.add(r.url.path);
+        return json({'code': 500});
+      }),
+    );
+    await expectLater(api.songUrl('1', AudioQuality.lossless), throwsA(isA<ApiException>()));
+    expect(paths, ['/api/bsr/sk/get']);
   });
 
   test('non-200 codes become ApiException; 301 means login needed', () async {
