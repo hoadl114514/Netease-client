@@ -76,6 +76,7 @@ class PlayerController extends ChangeNotifier {
     required this._settings,
     this.retryDelays = defaultRetryDelays,
   }) {
+    _applyMode(_savedMode);
     _subs = [
       _engine.completed.listen((_) => _onCompleted()),
       _engine.errors.listen(_onEngineError),
@@ -237,6 +238,8 @@ class PlayerController extends ChangeNotifier {
   Future<void> playQueue(List<Song> songs, {int start = 0, String title = '', String? sourceId}) {
     if (songs.isEmpty) return Future.value();
     _reportListened();
+    // 私人 FM 期间关掉了随机，换回普通队列时恢复上次选的模式。
+    if (isRadio) _applyMode(_savedMode);
     _extend = null;
     _queue = List.unmodifiable(songs);
     _queueTitle = title;
@@ -332,12 +335,45 @@ class PlayerController extends ChangeNotifier {
     if (isRadio) return;
     _shuffle = !_shuffle;
     _history.clear();
+    _saveMode();
     notifyListeners();
   }
 
   void toggleRepeat() {
     _repeat = _repeat == Repeat.list ? Repeat.one : Repeat.list;
+    _saveMode();
     notifyListeners();
+  }
+
+  /// 上次选的播放模式，重启后沿用。
+  PlayMode get _savedMode =>
+      PlayMode.values.where((m) => m.name == _settings.playMode).firstOrNull ?? PlayMode.list;
+
+  void _applyMode(PlayMode mode) {
+    _shuffle = mode == PlayMode.shuffle;
+    _repeat = mode == PlayMode.one ? Repeat.one : Repeat.list;
+  }
+
+  /// 私人 FM 里开单曲循环前记着的模式，关掉单曲循环时还原。
+  PlayMode? _modeBeforeRadioRepeat;
+
+  /// 记住用户选的模式。私人 FM 下只有「∞」和单曲循环：开单曲循环照记；
+  /// 关掉时还原开之前记的模式（随机还是随机），不把「∞」当成列表循环记下。
+  void _saveMode() {
+    final mode = playMode;
+    if (isRadio) {
+      if (mode == PlayMode.one) {
+        _modeBeforeRadioRepeat ??= _savedMode;
+      } else {
+        final before = _modeBeforeRadioRepeat ?? _savedMode;
+        _modeBeforeRadioRepeat = null;
+        _settings.playMode = (before == PlayMode.one ? PlayMode.list : before).name;
+        return;
+      }
+    } else {
+      _modeBeforeRadioRepeat = null;
+    }
+    _settings.playMode = mode.name;
   }
 
   /// 当前播放模式：单曲循环优先于随机。
@@ -358,6 +394,7 @@ class PlayerController extends ChangeNotifier {
     if (shuffle != _shuffle) _history.clear();
     _shuffle = shuffle;
     _repeat = next == PlayMode.one ? Repeat.one : Repeat.list;
+    _saveMode();
     notifyListeners();
   }
 

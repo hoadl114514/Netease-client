@@ -20,6 +20,7 @@ class AppSettings extends ChangeNotifier {
   static const _kRomaji = 'show_romaji';
   static const _kSearchHistory = 'search_history';
   static const _kSyncRecent = 'sync_recent_plays';
+  static const _kPlayMode = 'play_mode';
 
   /// 搜索历史最多保留几条。
   static const searchHistoryLimit = 20;
@@ -63,6 +64,11 @@ class AppSettings extends ChangeNotifier {
   /// 登录后把听过的歌上报给网易云，同步到官方客户端的「最近播放」。
   bool get syncRecentPlays => _prefs.getBool(_kSyncRecent) ?? true;
   set syncRecentPlays(bool v) => _set(() => _prefs.setBool(_kSyncRecent, v));
+
+  /// 上次选的播放模式（`PlayMode.name`：list / shuffle / one），没选过为 null。
+  String? get playMode => _prefs.getString(_kPlayMode);
+  set playMode(String? v) =>
+      _set(() => v == null ? _prefs.remove(_kPlayMode) : _prefs.setString(_kPlayMode, v));
 
   /// SharedPreferences 的 set 会先更新内存缓存再异步落盘，所以读到的值立即是新的。
   void _set(Future<bool> Function() write) {

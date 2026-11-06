@@ -248,6 +248,43 @@ void main() {
     expect(player.shuffle, isFalse);
   });
 
+  test('the chosen play mode is remembered across restarts', () async {
+    PlayerController restart() =>
+        PlayerController(engine: FakeEngine(), backend: FakeBackend(), settings: settings);
+    player.cyclePlayMode(); // 随机
+    expect(settings.playMode, 'shuffle');
+    final second = restart();
+    addTearDown(second.dispose);
+    expect(second.playMode, PlayMode.shuffle);
+
+    player.cyclePlayMode(); // 单曲循环
+    final third = restart();
+    addTearDown(third.dispose);
+    expect(third.playMode, PlayMode.one);
+    expect(third.repeat, Repeat.one);
+  });
+
+  test('personal FM does not overwrite the remembered shuffle', () async {
+    player.cyclePlayMode(); // 随机
+    await player.playRadio(() async => [song('a'), song('b')], title: '私人 FM');
+    expect(player.playMode, PlayMode.list);
+    player.cyclePlayMode(); // 单曲循环
+    player.cyclePlayMode(); // ∞
+    expect(settings.playMode, 'shuffle');
+    await player.playQueue(queue);
+    expect(player.playMode, PlayMode.shuffle);
+  });
+
+  test('turning off repeat-one in personal FM remembers list mode', () async {
+    await player.playRadio(() async => [song('a'), song('b')], title: '私人 FM');
+    player.cyclePlayMode(); // 单曲循环
+    expect(settings.playMode, 'one');
+    player.cyclePlayMode(); // ∞
+    expect(settings.playMode, 'list');
+    await player.playQueue(queue);
+    expect(player.playMode, PlayMode.list);
+  });
+
   test('a slow load for an old song does not override the new one', () async {
     final first = player.playQueue(queue); // 不等它。
     final second = player.jumpTo(2);
