@@ -1,5 +1,5 @@
 name: netease_client
-description: "A third-party NetEase Cloud Music client built with Flutter."
+description: "X-Music: a third-party NetEase Cloud Music client built with Flutter."
 publish_to: 'none'
 version: 0.0.9+9
 

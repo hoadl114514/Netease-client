@@ -49,9 +49,9 @@ jobs:
           flutter build apk --release --split-per-abi
           mkdir dist
           v="${TAG}"
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/netease-client-$v-universal.apk"
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/netease-client-$v-arm64-v8a.apk"
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/netease-client-$v-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/x-music-$v-universal.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/x-music-$v-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/x-music-$v-armeabi-v7a.apk"
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)
 
       - uses: softprops/action-gh-release@v2
