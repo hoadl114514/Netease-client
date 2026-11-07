@@ -1,0 +1,55 @@
+# 构建未签名的 iOS IPA，用于 AltStore / SideStore / TrollStore 侧载。
+# 手动触发，或改动 iOS 工程 / 本文件时触发。产物在对应运行里下载 x-music-ipa（保留 14 天）。
+# IPA 没有签名，侧载工具会用你自己的 Apple ID 重签。
+name: iOS
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          version=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          sha=$(git rev-parse --short HEAD)
+          mkdir -p dist/Payload
+          cp -R build/ios/iphoneos/Runner.app dist/Payload/
+          cd dist
+          zip -qry "x-music-v$version-$sha-unsigned.ipa" Payload
+          rm -rf Payload
+          shasum -a 256 *.ipa > SHA256SUMS.txt
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x-music-ipa
+          path: |
+            dist/*.ipa
+            dist/SHA256SUMS.txt
+          retention-days: 14
