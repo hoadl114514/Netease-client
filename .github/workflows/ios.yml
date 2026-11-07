@@ -53,3 +53,38 @@ jobs:
             dist/*.ipa
             dist/SHA256SUMS.txt
           retention-days: 14
+
+  # 模拟器版 .app，给 Appetize 这类在线模拟器用。Flutter 的模拟器构建只支持 debug。
+  ios-simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build iOS simulator app
+        run: flutter build ios --simulator --debug
+
+      - name: Package simulator app
+        run: |
+          version=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          sha=$(git rev-parse --short HEAD)
+          mkdir -p dist
+          cp -R build/ios/iphonesimulator/Runner.app dist/X-Music.app
+          lipo -info dist/X-Music.app/Runner
+          cd dist
+          zip -qry "x-music-v$version-$sha-simulator.app.zip" X-Music.app
+          rm -rf X-Music.app
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x-music-simulator-app
+          path: dist/*.zip
+          retention-days: 14
