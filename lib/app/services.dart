@@ -13,6 +13,7 @@ import '../state/account_controller.dart';
 import '../state/player_controller.dart';
 import '../state/settings.dart';
 import '../widgets/image_disk_cache.dart';
+import 'update_checker.dart';
 
 /// 应用级的单例集合，在 main 里建好后整个往下传。
 class AppServices {
@@ -22,6 +23,7 @@ class AppServices {
     required this.account,
     required this.player,
     PlaylistTracks? tracks,
+    this.updates,
   }) : tracks = tracks ?? PlaylistTracks(api);
 
   /// 正式环境：真实网络 + just_audio。
@@ -49,6 +51,7 @@ class AppServices {
       account: account,
       player: player,
       tracks: PlaylistTracks(api, store: FileTrackStore()),
+      updates: UpdateChecker(settings: settings),
     );
   }
 
@@ -60,9 +63,13 @@ class AppServices {
   /// 歌单歌曲（带本地缓存）。
   final PlaylistTracks tracks;
 
+  /// 检查 GitHub Release 更新。测试里为 null，不访问网络。
+  final UpdateChecker? updates;
+
   void dispose() {
     player.dispose();
     account.dispose();
     api.close();
+    updates?.dispose();
   }
 }

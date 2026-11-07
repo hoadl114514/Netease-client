@@ -1,5 +1,11 @@
-/// 应用显示名与版本。暂定名，正式起名后改这里即可。
+/// 应用显示名、版本和项目地址。
 abstract final class AppInfo {
   static const name = 'X-Music';
-  static const version = '0.0.9-alpha';
+
+  /// 和 pubspec.yaml 的 version、发布标签（去掉 v）保持一致，检查更新靠它比较。
+  static const version = '0.1.0';
+
+  static const repo = 'hoadl114514/X-Music';
+  static const repoUrl = 'https://github.com/$repo';
+  static const releasesUrl = '$repoUrl/releases';
 }

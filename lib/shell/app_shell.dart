@@ -32,6 +32,15 @@ class _AppShellState extends State<AppShell> {
   StreamSubscription<String>? _notices;
 
   @override
+  void initState() {
+    super.initState();
+    // 启动后查一次新版本，有就弹窗。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppScope.of(context).updates?.checkOnLaunch(context);
+    });
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // 播放器的提示（无版权、试听、音质降级……）统一弹 SnackBar。

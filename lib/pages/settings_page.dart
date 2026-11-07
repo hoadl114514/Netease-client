@@ -6,6 +6,7 @@ import '../audio/system_media.dart';
 import '../data/models.dart';
 import '../state/account_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/share.dart';
 import 'login_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -86,11 +87,19 @@ class SettingsPage extends StatelessWidget {
             onChanged: (v) => settings.syncRecentPlays = v,
           ),
           const _Header('关于'),
-          const ListTile(
-            leading: Icon(Icons.info_outline_rounded),
-            title: Text(AppInfo.name),
-            subtitle: Text('版本 ${AppInfo.version} · 第三方客户端，与网易云音乐官方无关'),
+          ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: const Text(AppInfo.name),
+            subtitle: const Text('版本 ${AppInfo.version} · 第三方客户端，与网易云音乐官方无关'),
+            trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+            onTap: () => openUrl(AppInfo.repoUrl),
           ),
+          if (AppScope.of(context).updates case final updates?)
+            ListTile(
+              leading: const Icon(Icons.system_update_rounded),
+              title: const Text('检查更新'),
+              onTap: () => updates.checkManually(context, AppScope.toast),
+            ),
         ],
       ),
     );
