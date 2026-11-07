@@ -9,7 +9,12 @@ import 'app_info.dart';
 
 /// GitHub 上的一个正式版 Release。
 class ReleaseInfo {
-  const ReleaseInfo({required this.tag, required this.name, required this.notes, required this.url});
+  const ReleaseInfo({
+    required this.tag,
+    required this.name,
+    required this.notes,
+    required this.url,
+  });
 
   final String tag;
   final String name;
@@ -84,9 +89,7 @@ class UpdateChecker {
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 320),
           child: SingleChildScrollView(
-            child: Text(
-              '当前版本 ${AppInfo.version}${r.notes.isEmpty ? '' : '\n\n${r.notes}'}',
-            ),
+            child: Text('当前版本 ${AppInfo.version}${r.notes.isEmpty ? '' : '\n\n${r.notes}'}'),
           ),
         ),
         actions: [

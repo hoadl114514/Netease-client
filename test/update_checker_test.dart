@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -20,8 +22,11 @@ void main() {
     UpdateChecker checker(String tag) => UpdateChecker(
       settings: settings,
       client: MockClient(
-        (_) async => http.Response(
-          '{"tag_name":"$tag","name":"X-Music $tag","body":"更新内容","html_url":"https://example.com/$tag"}',
+        // 中文要按 UTF-8 发，http.Response(String) 默认 latin1。
+        (_) async => http.Response.bytes(
+          utf8.encode(
+            '{"tag_name":"$tag","name":"X-Music $tag","body":"更新内容","html_url":"https://example.com/$tag"}',
+          ),
           200,
         ),
       ),
@@ -30,6 +35,7 @@ void main() {
     final newer = await checker('v99.0.0').newerRelease();
     expect(newer?.tag, 'v99.0.0');
     expect(newer?.url, 'https://example.com/v99.0.0');
+    expect(newer?.notes, '更新内容');
     expect(await checker('v0.0.1').newerRelease(), isNull);
   });
 
