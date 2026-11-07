@@ -1,11 +1,20 @@
-# Netease-client
-### ⚠️这个项目目前处于开发阶段，可能会遇到各种不稳定的情况⚠️
-一个基于flutter开发的网易云音乐第三方客户端
-小项目，不喜勿喷，有问题欢迎在issue指出
+<p align="center"><img src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="96" alt="X-Music"></p>
 
-> 当前阶段：alpha。已接入网易云接口和真实播放；推荐类功能（每日推荐、私人 FM、推荐歌单等）待开发。目前只做手机端（Android + iOS）。
+# X-Music
+
+一个基于 Flutter 开发的网易云音乐第三方客户端。
+小项目，不喜勿喷，有问题欢迎在 [issue](https://github.com/hoadl114514/X-Music/issues) 指出。
+
+> 当前版本：v0.1.0（首个正式版）。已接入网易云接口和真实播放；推荐类功能（每日推荐、私人 FM、推荐歌单等）待开发。目前只做手机端（Android + iOS）。
 >
 > 第三方客户端，与网易云音乐官方无关。
+
+## 下载
+
+到 [Releases](https://github.com/hoadl114514/X-Music/releases) 下载 APK。大多数手机选 `arm64-v8a`，不确定就选 `universal`。
+
+- 从 v0.1.0 起，安装包使用正式签名。之前的 alpha 版是 debug 签名，需要先卸载旧版再安装（登录状态和设置会清空）。
+- App 启动时会检查 GitHub 上的新正式版，有更新就弹窗提示；设置页「关于」下面也可以手动检查。
 
 | 首页 | 抽屉侧栏 | 播放页 | 播放页下滑 | 全屏歌词 |
 | --- | --- | --- | --- | --- |
@@ -19,6 +28,8 @@
 flutter pub get
 flutter run              # 连接 Android / iOS 设备或模拟器
 ```
+
+构建正式签名的 APK：在 `android/` 下新建 `key.properties`（已被 `.gitignore` 忽略），写入 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`，再运行 `flutter build apk --release`。没有这个文件时 release 包退回 debug 签名，只适合本地调试。
 
 `web/` 目录只用于在浏览器里快速预览界面，不是发布目标（QQ 歌词解密依赖 64 位整数，Web 上不可用）。
 
@@ -37,6 +48,7 @@ flutter run              # 连接 Android / iOS 设备或模拟器
 - **列表内搜索**：歌单、我喜欢、专辑、歌手等歌曲列表都能搜索列表内的歌曲。
 - **评论**：歌曲、歌单、专辑的评论区，热门 / 最新两种排序，楼中楼回复，点赞、发评论、回复、删除自己的评论。
 - **最近播放同步**：登录后开始放一首歌就报给网易云，出现在官方客户端的「最近播放」；听满 30 秒（短歌听一半）再给听歌排行计数。走和官方客户端一样的日志接口（EAPI + clientlog 域名）；设置里可以关掉。
+- **检查更新**：启动时查 GitHub 最新正式版，比当前版本新就弹窗，可以去下载、以后再说或跳过此版本。设置页「关于」点一下打开项目主页。
 - **复制**：长按歌词复制这一句，或进入批量选择（点选单句、长按选一段、全选，可带翻译 / 罗马音）；长按歌名 / 歌手选择复制歌名、歌手、专辑或「歌名 - 歌手」。
 
 ## 设计
@@ -50,7 +62,7 @@ flutter run              # 连接 Android / iOS 设备或模拟器
 
 ```
 lib/
-  app/        应用入口、显示名、服务装配（AppServices）
+  app/        应用入口、显示名与版本、服务装配（AppServices）、检查更新
   api/        网易云接口（EAPI 加解密、Cookie）
   audio/      播放内核接口 + just_audio 实现
   lyrics/     歌词解析（LRC / YRC / QRC）、QQ 歌词搜索匹配与解密、歌词来源调度

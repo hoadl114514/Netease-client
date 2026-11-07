@@ -29,3 +29,19 @@ Future<void> shareSong(Song song) async {
   await Clipboard.setData(ClipboardData(text: url));
   AppScope.toast('已复制歌曲链接');
 }
+
+/// 用浏览器打开链接：Android 上走系统，其他平台（或原生端不可用时）复制到剪贴板。
+Future<void> openUrl(String url) async {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openUrl', {'url': url});
+      if (ok ?? false) return;
+    } on MissingPluginException {
+      // 落到复制链接。
+    } on PlatformException {
+      // 同上。
+    }
+  }
+  await Clipboard.setData(ClipboardData(text: url));
+  AppScope.toast('已复制链接：$url');
+}

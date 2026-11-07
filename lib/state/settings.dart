@@ -21,6 +21,7 @@ class AppSettings extends ChangeNotifier {
   static const _kSearchHistory = 'search_history';
   static const _kSyncRecent = 'sync_recent_plays';
   static const _kPlayMode = 'play_mode';
+  static const _kSkippedUpdate = 'skipped_update';
 
   /// 搜索历史最多保留几条。
   static const searchHistoryLimit = 20;
@@ -69,6 +70,11 @@ class AppSettings extends ChangeNotifier {
   String? get playMode => _prefs.getString(_kPlayMode);
   set playMode(String? v) =>
       _set(() => v == null ? _prefs.remove(_kPlayMode) : _prefs.setString(_kPlayMode, v));
+
+  /// 用户在更新提示里选了「跳过此版本」的标签，例如 v0.2.0。
+  String? get skippedUpdate => _prefs.getString(_kSkippedUpdate);
+  set skippedUpdate(String? v) =>
+      _set(() => v == null ? _prefs.remove(_kSkippedUpdate) : _prefs.setString(_kSkippedUpdate, v));
 
   /// SharedPreferences 的 set 会先更新内存缓存再异步落盘，所以读到的值立即是新的。
   void _set(Future<bool> Function() write) {

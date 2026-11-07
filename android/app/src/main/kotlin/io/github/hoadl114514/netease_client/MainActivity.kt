@@ -2,9 +2,11 @@ package io.github.hoadl114514.netease_client
 
 import android.Manifest
 import android.app.NotificationManager
+import android.content.ActivityNotFoundException
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -48,6 +50,17 @@ class MainActivity : AudioServiceActivity() {
                         .putExtra(Intent.EXTRA_SUBJECT, call.argument<String>("subject"))
                     startActivity(Intent.createChooser(send, call.argument<String>("title")))
                     result.success(null)
+                }
+                "openUrl" -> {
+                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url")))
+                    result.success(
+                        try {
+                            startActivity(view)
+                            true
+                        } catch (e: ActivityNotFoundException) {
+                            false
+                        },
+                    )
                 }
                 "saveImage" -> saveImage(
                     call.argument<ByteArray>("bytes")!!,
